@@ -1,0 +1,29 @@
+# Runs schema migrations before a rollout (goose + advisory lock, idempotent).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: agentmesh-migrate
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: OnFailure
+      securityContext: &podsec
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: agentmesh/backend
+          command: ["amctl", "migrate", "up"]
+          envFrom:
+            - secretRef: { name: agentmesh-db }
+          securityContext: &csec
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 128Mi }

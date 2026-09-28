@@ -1,0 +1,107 @@
+# Agent gateway: long-lived WebSockets behind an L4 (TCP) load balancer.
+# TLS terminates in the pod with a cert-manager certificate (secret
+# agentmesh-gateway-tls), so no L7 proxy sits in the middle of agent traffic.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-gateway
+  labels: { app.kubernetes.io/name: agent-gateway, app.kubernetes.io/part-of: agentmesh }
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: agent-gateway }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: agent-gateway, app.kubernetes.io/part-of: agentmesh }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9090" }
+    spec:
+      # Drain asks agents to reconnect with jitter over ~30s (see gateway.Drain).
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector: { matchLabels: { app.kubernetes.io/name: agent-gateway } }
+      containers:
+        - name: agent-gateway
+          image: agentmesh/backend
+          command: ["agent-gateway"]
+          ports:
+            - { name: agents, containerPort: 8443 }
+            - { name: metrics, containerPort: 9090 }
+          env:
+            - name: AGENTMESH_GATEWAY_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - { name: AGENTMESH_GATEWAY_TLS_CERT, value: /tls/tls.crt }
+            - { name: AGENTMESH_GATEWAY_TLS_KEY, value: /tls/tls.key }
+            - { name: AGENTMESH_TRUST_PROXY_HEADERS, value: "false" }
+          envFrom:
+            - configMapRef: { name: agentmesh-config }
+            - secretRef: { name: agentmesh-db }
+            - secretRef: { name: agentmesh-gateway-keys }
+          volumeMounts:
+            - { name: tls, mountPath: /tls, readOnly: true }
+          readinessProbe:
+            httpGet: { path: /readyz, port: agents, scheme: HTTPS }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: agents, scheme: HTTPS }
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { memory: 2Gi }
+      volumes:
+        - name: tls
+          secret: { secretName: agentmesh-gateway-tls }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-gateway
+  annotations:
+    # AWS example: NLB with TCP passthrough; adjust for your cloud.
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "350"
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local # preserve agent source IPs
+  selector: { app.kubernetes.io/name: agent-gateway }
+  ports: [{ name: agents, port: 443, targetPort: agents }]
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: agent-gateway
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: agent-gateway }
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    # Scale on connections per pod (requires prometheus-adapter exposing
+    # agentmesh_gateway_connections); CPU is a fallback signal.
+    - type: Pods
+      pods:
+        metric: { name: agentmesh_gateway_connections }
+        target: { type: AverageValue, averageValue: "10000" }
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 70 } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 600, policies: [{ type: Pods, value: 1, periodSeconds: 300 }] }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: agent-gateway
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: agent-gateway }

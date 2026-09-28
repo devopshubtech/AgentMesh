@@ -1,0 +1,23 @@
+# Reference Kubernetes deployment (Kustomize base).
+#   kubectl apply -k infrastructure/kubernetes/base
+# PostgreSQL and NATS are expected to be provided separately (managed
+# Postgres / CloudNativePG; the official NATS Helm chart). Secrets come from
+# your secret manager (e.g. External Secrets Operator) — see secrets.example.yaml.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: agentmesh
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - migrate-job.yaml
+  - control-api.yaml
+  - agent-gateway.yaml
+  - worker.yaml
+  - dashboard.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+images:
+  - name: agentmesh/backend
+    newTag: "0.1.0"
+  - name: agentmesh/dashboard
+    newTag: "0.1.0"

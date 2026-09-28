@@ -1,0 +1,32 @@
+# Static SPA. In Kubernetes the Ingress routes /v1 straight to control-api,
+# so the image's built-in /v1 proxy is unused here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  labels: { app.kubernetes.io/name: dashboard, app.kubernetes.io/part-of: agentmesh }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: dashboard }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: dashboard, app.kubernetes.io/part-of: agentmesh }
+    spec:
+      containers:
+        - name: dashboard
+          image: agentmesh/dashboard
+          ports: [{ name: http, containerPort: 80 }]
+          readinessProbe:
+            httpGet: { path: /, port: http }
+          resources:
+            requests: { cpu: 20m, memory: 32Mi }
+            limits: { memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dashboard
+spec:
+  selector: { app.kubernetes.io/name: dashboard }
+  ports: [{ name: http, port: 80, targetPort: http }]

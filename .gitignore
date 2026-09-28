@@ -1,0 +1,20 @@
+# secrets & local state
+infrastructure/docker/.env
+infrastructure/docker/.env.keys
+infrastructure/docker/certs/
+*.pem
+.agent-dev/
+
+# build output
+/bin/
+/dist/
+*.exe
+dashboard/node_modules/
+dashboard/dist/
+coverage.out
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

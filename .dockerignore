@@ -1,0 +1,10 @@
+.git
+dashboard/node_modules
+dashboard/dist
+infrastructure/docker/.env
+infrastructure/docker/.env.keys
+infrastructure/docker/certs
+.agent-dev
+bin
+dist
+*.exe

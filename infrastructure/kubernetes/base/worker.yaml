@@ -1,0 +1,36 @@
+# Jobs coordinate through Postgres advisory locks, so replicas > 1 is safe.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels: { app.kubernetes.io/name: worker, app.kubernetes.io/part-of: agentmesh }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app.kubernetes.io/name: worker }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: worker, app.kubernetes.io/part-of: agentmesh }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/port: "9091" }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: worker
+          image: agentmesh/backend
+          command: ["worker"]
+          ports: [{ name: metrics, containerPort: 9091 }]
+          envFrom:
+            - configMapRef: { name: agentmesh-config }
+            - secretRef: { name: agentmesh-db }
+          livenessProbe:
+            httpGet: { path: /healthz, port: metrics }
+            periodSeconds: 15
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }

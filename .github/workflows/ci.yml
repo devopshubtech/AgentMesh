@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l backend agents protocols/agentapi tests)"
+      - name: vet
+        run: |
+          go vet ./...
+          GOOS=windows go vet ./agents/...
+          GOOS=darwin go vet ./agents/core
+      - name: unit tests
+        run: go test -race -count=1 ./...
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - name: proto lint + generated code is current
+        run: |
+          go install github.com/bufbuild/buf/cmd/buf@v1.47.2
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.5
+          buf lint
+          buf generate
+          git diff --exit-code protocols/gen
+
+  agents:
+    runs-on: ubuntu-latest
+    needs: go
+    strategy:
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, pkg: ./agents/linux, out: agentmesh-agent-linux-amd64 }
+          - { goos: linux, goarch: arm64, pkg: ./agents/linux, out: agentmesh-agent-linux-arm64 }
+          - { goos: windows, goarch: amd64, pkg: ./agents/windows, out: agentmesh-agent-windows-amd64.exe }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: build ${{ matrix.out }}
+        env: { CGO_ENABLED: "0", GOOS: "${{ matrix.goos }}", GOARCH: "${{ matrix.goarch }}" }
+        run: |
+          go build -trimpath -ldflags "-s -w -X github.com/enfec/agentmesh/agents/core.Version=${GITHUB_SHA::12}" \
+            -o dist/${{ matrix.out }} ${{ matrix.pkg }}
+          sha256sum dist/${{ matrix.out }} > dist/${{ matrix.out }}.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.out }}
+          path: dist/
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run: { working-directory: dashboard }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    runs-on: ubuntu-latest
+    needs: [go, dashboard]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: start stack
+        run: |
+          ./scripts/dev-setup.sh
+          docker compose -f infrastructure/docker/docker-compose.yml up -d --build --wait
+      - name: e2e
+        run: go test -tags e2e -count=1 -v ./tests/e2e
+      - name: logs on failure
+        if: failure()
+        run: docker compose -f infrastructure/docker/docker-compose.yml logs --no-color

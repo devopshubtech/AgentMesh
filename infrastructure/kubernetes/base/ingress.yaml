@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: agentmesh
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"      # SSE
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"  # SSE
+    nginx.ingress.kubernetes.io/limit-rps: "20"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mesh.example.com]
+      secretName: agentmesh-web-tls
+  rules:
+    - host: mesh.example.com
+      http:
+        paths:
+          - path: /v1
+            pathType: Prefix
+            backend: { service: { name: control-api, port: { name: http } } }
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: dashboard, port: { name: http } } }

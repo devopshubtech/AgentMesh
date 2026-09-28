@@ -1,0 +1,212 @@
+// AgentMesh agent <-> gateway protocol, version 1.
+//
+// Transport: binary WebSocket messages over TLS, subprotocol "agentmesh.v1".
+// Every WebSocket message is exactly one serialized Envelope.
+// Compatibility rules: fields are only ever added; numbers are never reused.
+syntax = "proto3";
+
+package agentmesh.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/enfec/agentmesh/protocols/gen/go/agent/v1;agentv1";
+
+message Envelope {
+  uint32 v = 1;           // protocol major version
+  string id = 2;          // unique message id (UUID)
+  string correlation = 3; // id of the message this one answers, if any
+  google.protobuf.Timestamp ts = 4;
+
+  oneof body {
+    // agent -> server
+    Hello hello = 10;
+    Heartbeat heartbeat = 11;
+    Inventory inventory = 12;
+    CommandAck command_ack = 13;
+    CommandOutput command_output = 14;
+    CommandResult command_result = 15;
+    TokenRefresh token_refresh = 16;
+
+    // server -> agent
+    Welcome welcome = 30;
+    CommandRequest command_request = 31;
+    CommandCancel command_cancel = 32;
+    ConfigUpdate config_update = 34;
+    Disconnect disconnect = 36;
+    Error error = 37;
+  }
+
+  // Reserved for later phases: UpdateStatus, LogBatch, MetricBatch,
+  // UpdateAvailable, SessionOpen.
+  reserved 17, 18, 19, 33, 35;
+}
+
+// ---------------------------------------------------------------- handshake
+
+message Hello {
+  string agent_version = 1;
+  repeated uint32 protocol_versions = 2;
+  string platform = 3; // linux | windows | darwin | android | ios
+  string arch = 4;     // amd64 | arm64 | ...
+  repeated string capabilities = 5;
+  string boot_id = 6; // changes on every agent process start
+  string hostname = 7;
+}
+
+message Welcome {
+  string session_id = 1;
+  google.protobuf.Timestamp server_time = 2;
+  uint32 heartbeat_interval_s = 3;
+  uint32 negotiated_version = 4;
+  string device_id = 5;
+}
+
+// Sent by the agent with a freshly issued device access token so the
+// gateway can extend the connection's authorization without reconnecting.
+message TokenRefresh {
+  string access_token = 1;
+}
+
+message ConfigUpdate {
+  uint32 heartbeat_interval_s = 1;
+}
+
+message Disconnect {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    REASON_RECONNECT = 1;      // server maintenance; reconnect after retry_after_s
+    REASON_SUPERSEDED = 2;     // a newer connection for this device exists
+    REASON_DISABLED = 3;       // device disabled by an administrator
+    REASON_REVOKED = 4;        // device permanently revoked: stop retrying
+    REASON_TOKEN_EXPIRED = 5;  // re-authenticate and reconnect
+    REASON_PROTOCOL_ERROR = 6;
+    REASON_RATE_LIMITED = 7;
+  }
+  Reason reason = 1;
+  string message = 2;
+  uint32 retry_after_s = 3;
+}
+
+message Error {
+  string code = 1;
+  string message = 2;
+}
+
+// ---------------------------------------------------------------- presence
+
+message Heartbeat {
+  uint64 seq = 1;
+  uint64 uptime_s = 2;
+  double cpu_percent = 3;
+  uint64 mem_used_bytes = 4;
+  uint64 mem_total_bytes = 5;
+  double load1 = 6;
+}
+
+message Inventory {
+  string hostname = 1;
+  string os_name = 2;
+  string os_version = 3;
+  string os_build = 4;
+  string kernel_version = 5;
+  string platform = 6;
+  string arch = 7;
+  Cpu cpu = 8;
+  Memory memory = 9;
+  repeated Disk disks = 10;
+  repeated NetInterface network = 11;
+  uint64 uptime_s = 12;
+  google.protobuf.Timestamp boot_time = 13;
+  string agent_version = 14;
+  string machine_id_hash = 15; // sha256 of the OS machine id; a hint, never an identity
+
+  message Cpu {
+    string model = 1;
+    uint32 cores = 2;
+    uint32 threads = 3;
+  }
+  message Memory {
+    uint64 total_bytes = 1;
+    uint64 used_bytes = 2;
+  }
+  message Disk {
+    string mount = 1;
+    string fstype = 2;
+    uint64 total_bytes = 3;
+    uint64 used_bytes = 4;
+  }
+  message NetInterface {
+    string name = 1;
+    string mac = 2;
+    repeated string addrs = 3;
+  }
+}
+
+// ---------------------------------------------------------------- commands
+
+// CommandSpec is what the control plane signs. It travels as opaque bytes
+// inside CommandRequest so the agent verifies exactly what was signed.
+message CommandSpec {
+  string command_id = 1;
+  string org_id = 2;
+  string device_id = 3;
+  string kind = 4;   // "exec" | "action"
+  string action = 5; // for kind=action
+  repeated string argv = 6;
+  bool shell = 7;
+  uint32 timeout_s = 8;
+  google.protobuf.Timestamp issued_at = 9;
+  google.protobuf.Timestamp expires_at = 10;
+  string issued_by = 11; // user id
+  bytes nonce = 12;
+}
+
+message CommandRequest {
+  bytes spec = 1;      // serialized CommandSpec
+  bytes signature = 2; // Ed25519 over "agentmesh-cmd-v1\x00" || spec
+  string key_id = 3;
+}
+
+message CommandAck {
+  string command_id = 1;
+}
+
+message CommandCancel {
+  string command_id = 1;
+}
+
+enum Stream {
+  STREAM_UNSPECIFIED = 0;
+  STREAM_STDOUT = 1;
+  STREAM_STDERR = 2;
+}
+
+message CommandOutput {
+  string command_id = 1;
+  Stream stream = 2;
+  uint32 seq = 3;
+  bytes data = 4;
+}
+
+enum CommandStatus {
+  COMMAND_STATUS_UNSPECIFIED = 0;
+  COMMAND_STATUS_SUCCEEDED = 1;
+  COMMAND_STATUS_FAILED = 2;
+  COMMAND_STATUS_TIMED_OUT = 3;
+  COMMAND_STATUS_CANCELED = 4;
+  COMMAND_STATUS_REJECTED = 5;
+}
+
+message CommandResult {
+  string command_id = 1;
+  CommandStatus status = 2;
+  int32 exit_code = 3;
+  bool has_exit_code = 4;
+  bytes stdout = 5;
+  bytes stderr = 6;
+  bool truncated = 7;
+  string error = 8;
+  uint64 duration_ms = 9;
+  google.protobuf.Timestamp started_at = 10;
+  google.protobuf.Timestamp finished_at = 11;
+}

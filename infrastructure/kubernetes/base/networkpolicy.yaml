@@ -1,0 +1,44 @@
+# Default-deny ingress; only the ingress controller reaches the API/dashboard
+# and anyone (agents) reaches the gateway on 8443. Metrics from the
+# monitoring namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web
+spec:
+  podSelector:
+    matchExpressions:
+      - { key: app.kubernetes.io/name, operator: In, values: [control-api, dashboard] }
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-agents
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: agent-gateway }
+  ingress:
+    - ports: [{ port: 8443 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-metrics
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/part-of: agentmesh }
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+      ports: [{ port: 8080 }, { port: 9090 }, { port: 9091 }]
