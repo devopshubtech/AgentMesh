@@ -3,11 +3,11 @@
 > ## ⬇️ Direct downloads
 > | App | Direct link |
 > |---|---|
-> | 📱 **Android app (APK)** | **[Download agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk)** |
-> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.4.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_arm64.tar.gz)** |
-> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.4.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_amd64.tar.gz)** |
-> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.4.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_amd64.zip)** |
-> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.4.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_amd64.deb)** |
+> | 📱 **Android app v0.5.0 (APK)** | **[Download agentmesh-control-v0.5.0.apk](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-control-v0.5.0.apk)** · always-latest: [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
+> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.5.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_darwin_arm64.tar.gz)** |
+> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.5.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_darwin_amd64.tar.gz)** |
+> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.5.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_windows_amd64.zip)** |
+> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.5.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_amd64.deb)** |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
@@ -42,19 +42,19 @@ Phases 2 to 4 (macOS, artifacts and updates, metrics, mobile, remote sessions) a
 
 Every file is attached to this repo's **[Releases](https://github.com/devopshubtech/AgentMesh/releases/latest)**, along with a `SHA256SUMS` file.
 
-| Platform | Download (v0.4.0) |
+| Platform | Download (v0.5.0) |
 |---|---|
 | **Android app** (control + exit node) | [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
-| Windows x64 | [agentmesh-agent_0.4.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_amd64.zip) |
-| Windows ARM64 | [agentmesh-agent_0.4.0_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_arm64.zip) |
-| macOS Apple Silicon | [agentmesh-agent_0.4.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_arm64.tar.gz) |
-| macOS Intel | [agentmesh-agent_0.4.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_amd64.tar.gz) |
-| Debian / Ubuntu x64 | [agentmesh-agent_0.4.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_amd64.deb) |
-| Debian / Ubuntu ARM64 | [agentmesh-agent_0.4.0_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_arm64.deb) |
-| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.4.0_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_armhf.deb) |
-| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.4.0-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent-0.4.0-1.x86_64.rpm) |
-| RHEL / Fedora ARM64 | [agentmesh-agent-0.4.0-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent-0.4.0-1.aarch64.rpm) |
-| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_armv7.tar.gz) |
+| Windows x64 | [agentmesh-agent_0.5.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_windows_amd64.zip) |
+| Windows ARM64 | [agentmesh-agent_0.5.0_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_windows_arm64.zip) |
+| macOS Apple Silicon | [agentmesh-agent_0.5.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_darwin_arm64.tar.gz) |
+| macOS Intel | [agentmesh-agent_0.5.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_darwin_amd64.tar.gz) |
+| Debian / Ubuntu x64 | [agentmesh-agent_0.5.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_amd64.deb) |
+| Debian / Ubuntu ARM64 | [agentmesh-agent_0.5.0_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_arm64.deb) |
+| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.5.0_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_armhf.deb) |
+| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.5.0-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent-0.5.0-1.x86_64.rpm) |
+| RHEL / Fedora ARM64 | [agentmesh-agent-0.5.0-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent-0.5.0-1.aarch64.rpm) |
+| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.5.0/agentmesh-agent_0.5.0_linux_armv7.tar.gz) |
 
 **One-line install.** These always pull the latest release and check the SHA-256 before installing. Get `<gateway>` and the token from the dashboard's **Enrollment** page. Add `--ca-file ca.pem` when the server uses a private or development CA, and `--enable-exit-node` to let this device act as an exit node.
 
@@ -205,6 +205,8 @@ docker compose -f infrastructure/docker/docker-compose.yml logs tunnel | Select-
 - **Settings:** set `AM_PUBLIC_GATEWAY_URL=https://<LAN-IP>:18443` in `infrastructure/docker/.env`. Then re-issue the certificate so it includes the LAN IP: `go run ./backend/cmd/amctl dev-certs -out infrastructure/docker/certs -hosts localhost,127.0.0.1,agent-gateway,dashboard,<LAN-IP>`. This reuses the existing CA.
 - **Development CA:** choose *"Private / development server: trust its CA…"* in the app. Compare the SHA-256 fingerprint it shows with the one `amctl dev-certs` prints.
 - **Sign in:** use a user with the `sessions.exit_node` permission (Admin or Super Admin). Open the device and tap **Use as exit node**, then **Check my IP**.
+
+**Speed.** Exit-node traffic runs phone → relay → agent → internet, so it can never be faster than the agent's **upload** bandwidth or the relay path. Measured on the dev laptop: 115-125 Mbit/s through the relay directly, but only about 11 Mbit/s through a free Cloudflare *quick* tunnel, which is throttled. For near line-speed on mobile data, run the server on a public host (VPS) or use a named Cloudflare tunnel, or port-forward 13443 on the router. The app blocks QUIC (UDP/443) inside the tunnel, so browsers use TCP, which is much faster over the relay.
 
 **Scope and limits (MVP).**
 

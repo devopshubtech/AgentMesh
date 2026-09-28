@@ -135,9 +135,33 @@ services:
     profiles: [public]
     image: cloudflare/cloudflared:2025.8.1
     restart: unless-stopped
-    command: ["tunnel", "--no-autoupdate", "--url", "https://dashboard:443", "--no-tls-verify"]
+    # HTTP/2 transport measured ~60% faster than QUIC for the relay WebSocket.
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "--url", "https://dashboard:443", "--no-tls-verify"]
     depends_on:
       dashboard: { condition: service_healthy }
+
+  # Exit node running on this host (Linux agent in a container). Traffic
+  # leaves with the host's public IP; useful where the native agent cannot
+  # run (e.g. Windows Application Control blocks unsigned binaries).
+  #   AM_EXIT_ENROLL_TOKEN=am_enr_... docker compose --profile exit up -d exit-agent
+  exit-agent:
+    profiles: [exit]
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/agent-linux.Dockerfile
+    image: agentmesh/agent-linux:dev
+    hostname: ${AM_EXIT_HOSTNAME:-home-exit-node}
+    restart: unless-stopped
+    environment:
+      AGENTMESH_SERVER: https://agent-gateway:8443
+      AGENTMESH_CA_FILE: /certs/ca.pem
+      AGENTMESH_ENROLL_TOKEN: ${AM_EXIT_ENROLL_TOKEN:-}
+      AGENTMESH_ENABLE_EXIT_NODE: "1"
+    volumes:
+      - ./certs/ca.pem:/certs/ca.pem:ro
+      - exit-agent-state:/var/lib/agentmesh
+    depends_on:
+      agent-gateway: { condition: service_healthy }
 
   # A containerized Linux device for demos/tests:
   #   AM_DEMO_ENROLL_TOKEN=am_enr_... docker compose --profile demo up -d demo-agent
@@ -162,3 +186,4 @@ services:
 volumes:
   pgdata:
   demo-agent-state:
+  exit-agent-state:

@@ -69,6 +69,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.agentmesh.control.BuildConfig
 import io.agentmesh.control.data.CreateCommand
 import io.agentmesh.control.data.Device
 import io.agentmesh.control.vpn.ExitVpnService
@@ -191,7 +192,7 @@ private fun VpnBanner(vpn: VpnStatus, exitIp: String?, onCheckIp: () -> Unit, on
 @Composable
 private fun SetupScreen(vm: AppViewModel) {
     val st by vm.state.collectAsState()
-    var url by rememberSaveable { mutableStateOf("https://") }
+    var url by rememberSaveable { mutableStateOf("") }
     var relayViaServer by remember { mutableStateOf(vm.relayViaServer) }
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (vm.servers.isNotEmpty()) {
@@ -210,12 +211,13 @@ private fun SetupScreen(vm: AppViewModel) {
             }
             HorizontalDivider()
         }
-        Text("Add a server", fontWeight = FontWeight.SemiBold)
+        Text("Connect to a remote server", fontWeight = FontWeight.SemiBold)
         Text(
             "Use the public address to connect from mobile data or any network (for example " +
                 "https://your-name.trycloudflare.com or https://mesh.example.com), or the LAN address " +
                 "(https://192.168.x.x:13443) on the same Wi-Fi.", fontSize = 13.sp)
-        OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, singleLine = true,
+        OutlinedTextField(url, { url = it }, label = { Text("Remote server: IP, domain or URL") },
+            placeholder = { Text("203.0.113.7  ·  mesh.example.com  ·  https://…") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
         Button(onClick = { vm.saveServer(url, trustCandidate = false) }, modifier = Modifier.fillMaxWidth()) {
             Text("Continue (publicly trusted certificate)")
@@ -224,6 +226,7 @@ private fun SetupScreen(vm: AppViewModel) {
             Text("Private / development server: trust its CA…")
         }
         if (vm.hasCustomCa) TextButton(onClick = vm::clearCa) { Text("Remove custom CA of the current server") }
+        Text("AgentMesh v${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE})", fontSize = 12.sp, color = Muted)
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = relayViaServer, onCheckedChange = { relayViaServer = it; vm.relayViaServer = it })
@@ -255,10 +258,10 @@ private fun ServerBar(server: String, onSwitch: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
-                Text("Server", fontSize = 11.sp, color = Muted)
+                Text("Server · app v${BuildConfig.VERSION_NAME}", fontSize = 11.sp, color = Muted)
                 Text(server, fontSize = 13.sp)
             }
-            TextButton(onClick = onSwitch) { Text("Switch server") }
+            TextButton(onClick = onSwitch) { Text("Connect to remote server") }
         }
     }
 }

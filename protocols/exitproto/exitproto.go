@@ -43,10 +43,11 @@ const (
 func YamuxConfig() *yamux.Config {
 	c := yamux.DefaultConfig()
 	c.EnableKeepAlive = true
-	// Phones may stall a backgrounded app for tens of seconds (battery
-	// savers); tolerate ~60s without a pong before declaring the link dead.
+	// Pings share the single relay connection with bulk data, so on a slow or
+	// throttled path a pong can queue behind megabytes of payload; phones may
+	// also stall a backgrounded app. Tolerate ~90s before declaring it dead.
 	c.KeepAliveInterval = 30 * time.Second
-	c.ConnectionWriteTimeout = 30 * time.Second
+	c.ConnectionWriteTimeout = 60 * time.Second
 	c.MaxStreamWindowSize = 1 << 20 // 1 MiB per stream: good throughput on high-latency links
 	c.StreamOpenTimeout = HandshakeLimit
 	c.LogOutput = io.Discard

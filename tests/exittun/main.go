@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -87,6 +88,7 @@ func main() {
 	lanProbe := flag.String("lan-probe", "192.168.30.1", "private address that the agent must refuse")
 	dnsServer := flag.String("dns", "1.1.1.1", "public DNS server to query through the tunnel (must be routed into the TUN)")
 	hold := flag.Duration("hold", 0, "keep the session connected this long after the checks (for UI demos)")
+	bench := flag.String("bench", "", "host whose /__down endpoint is downloaded through the tunnel to measure throughput (e.g. speed.cloudflare.com)")
 	flag.Parse()
 	if *caFile != "" {
 		pem, err := os.ReadFile(*caFile)
@@ -158,6 +160,20 @@ func main() {
 	check("counters", eng.BytesDown() > 0 && eng.Flows() >= 2,
 		fmt.Sprintf("flows=%d up=%dB down=%dB", eng.Flows(), eng.BytesUp(), eng.BytesDown()))
 
+	if *bench != "" {
+		ips, _ := net.LookupHost(*bench)
+		for _, ip := range ips {
+			if strings.Contains(ip, ".") {
+				_, _ = sh("ip", "route", "add", ip+"/32", "dev", "amtun0")
+			}
+		}
+		for i := 0; i < 2; i++ {
+			out, err := sh("curl", "-s", "--max-time", "60", "-o", "/dev/null", "-w", "%{speed_download} %{time_total}", "https://"+*bench+"/__down?bytes=25000000")
+			var bps, secs float64
+			fmt.Sscanf(out, "%f %f", &bps, &secs)
+			check("throughput via exit node", err == nil && bps > 0, fmt.Sprintf("%.1f Mbit/s (25 MB in %.1fs)", bps*8/1e6, secs))
+		}
+	}
 	if *hold > 0 {
 		fmt.Println("holding session with background load for", *hold)
 		stop := time.Now().Add(*hold)

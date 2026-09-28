@@ -56,6 +56,7 @@ done
 # ---- Android control app (built separately with the android-build image)
 if [ -f dist/agentmesh-control.apk ]; then
   cp dist/agentmesh-control.apk "$OUT/agentmesh-control.apk"
+  cp dist/agentmesh-control-v*.apk "$OUT/" 2>/dev/null || true
 fi
 
 cp scripts/install/install.sh scripts/install/install.ps1 "$OUT/"

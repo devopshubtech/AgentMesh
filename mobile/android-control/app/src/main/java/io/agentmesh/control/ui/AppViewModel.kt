@@ -133,14 +133,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun openSetup() = go(Screen.Setup)
 
-    private fun normalize(url: String): String? {
-        val u = url.trim().trimEnd('/')
-        return if (u.startsWith("https://") && u.length > 10) u else null
+    /**
+     * Accepts what people actually type for a remote server:
+     *   "203.0.113.7"            -> https://203.0.113.7:13443  (bare IP: AgentMesh HTTPS port)
+     *   "203.0.113.7:8443"       -> https://203.0.113.7:8443
+     *   "mesh.example.com"       -> https://mesh.example.com
+     *   "https://x.trycloudflare.com/any/path" -> https://x.trycloudflare.com
+     * Plain http:// is refused (credentials must not travel unencrypted).
+     */
+    private fun normalize(input: String): String? {
+        var s = input.trim().trimEnd('/')
+        if (s.startsWith("http://", ignoreCase = true)) return null
+        s = s.removePrefix("https://").removePrefix("HTTPS://")
+        val hostPort = s.substringBefore('/')
+        if (hostPort.isBlank() || hostPort.contains(' ')) return null
+        val host = hostPort.substringBeforeLast(':').ifBlank { hostPort }
+        val hasPort = hostPort.contains(':') && hostPort.substringAfterLast(':').all(Char::isDigit)
+        val isIp = host.split('.').let { p -> p.size == 4 && p.all { it.toIntOrNull() in 0..255 } }
+        return when {
+            hasPort -> "https://$hostPort"
+            isIp -> "https://$host:$DEFAULT_PORT"
+            host.contains('.') || host == "localhost" -> "https://$host"
+            else -> null
+        }
+    }
+
+    private companion object {
+        const val DEFAULT_PORT = 13443
     }
 
     /** Downloads the server's CA for trust-on-first-use confirmation. */
     fun fetchCa(url: String) = launchBusy {
-        val u = normalize(url) ?: return@launchBusy toast("Server URL must start with https://")
+        val u = normalize(url) ?: return@launchBusy toast("Enter a server address, e.g. 203.0.113.7, mesh.example.com or https://…")
         val ca = withContext(Dispatchers.IO) { Tls.fetchServerCa(u) }
         _state.update { it.copy(caCandidate = CaCandidate(Tls.fingerprint(ca), Tls.toPem(ca), ca.subjectX500Principal.name)) }
     }
@@ -148,7 +172,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun rejectCa() = _state.update { it.copy(caCandidate = null) }
 
     fun saveServer(url: String, trustCandidate: Boolean) {
-        val u = normalize(url) ?: return toast("Server URL must start with https://")
+        val u = normalize(url) ?: return toast("Enter a server address, e.g. 203.0.113.7, mesh.example.com or https://…")
         val candidate = _state.value.caCandidate
         _state.update { it.copy(caCandidate = null) }
         store.serverUrl = u

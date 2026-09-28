@@ -25,5 +25,8 @@ fi
 
 echo ">> gradle assembleRelease"
 gradle --no-daemon --console=plain -q assembleRelease
-cp app/build/outputs/apk/release/app-release.apk /src/dist/agentmesh-control.apk
-ls -l /src/dist/agentmesh-control.apk
+VER=${AGENTMESH_VERSION_NAME:-0.0.0-dev}
+rm -f /src/dist/agentmesh-control-v*.apk
+cp app/build/outputs/apk/release/app-release.apk /src/dist/agentmesh-control-v$VER.apk
+cp app/build/outputs/apk/release/app-release.apk /src/dist/agentmesh-control.apk   # stable name for the /latest link
+ls -l /src/dist/agentmesh-control*.apk
