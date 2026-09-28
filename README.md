@@ -1,6 +1,20 @@
 # AgentMesh
 
-A cross-platform device management and secure remote-access platform. You install a lightweight **agent** on each device. The agent dials **out** to a Go **control plane**, so the device never needs an inbound port. You manage the fleet from a **web dashboard**; an Android control app comes later.
+> ## ⬇️ Direct downloads
+> | App | Direct link |
+> |---|---|
+> | 📱 **Android app (APK)** | **[Download agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk)** |
+> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.2.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_darwin_arm64.tar.gz)** |
+> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.2.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_darwin_amd64.tar.gz)** |
+> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.2.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_windows_amd64.zip)** |
+> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.2.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_amd64.deb)** |
+>
+> See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
+>
+> **macOS install:** `tar -xzf agentmesh-agent_*_darwin_*.tar.gz && sudo ./install.sh --server https://<gateway>:18443 --token am_enr_...`
+> **Android install:** open the APK link on the phone and allow "Install unknown apps" when asked.
+
+A cross-platform device management and secure remote-access platform. You install a lightweight **agent** on each device. The agent dials **out** to a Go **control plane**, so the device never needs an inbound port. You manage the fleet from a **web dashboard** or the **Android app**.
 
 - **Design:** [docs/architecture.md](docs/architecture.md) covers all 20 architecture sections. It also has an **Implementation notes** section recording where the MVP differs from the original plan.
 - **REST contract:** [docs/api.md](docs/api.md)
