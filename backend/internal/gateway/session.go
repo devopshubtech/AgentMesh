@@ -670,6 +670,10 @@ func (s *session) onBus(m *nats.Msg) {
 			s.disconnect(agentv1.Disconnect_REASON_REVOKED, "device revoked by administrator", 0)
 		case bus.ControlDisable:
 			s.disconnect(agentv1.Disconnect_REASON_DISABLED, "device disabled by administrator", 60)
+		case bus.ControlSessionOpen:
+			// Signed by control-api; the agent verifies it before joining.
+			s.send(&agentv1.Envelope{Body: &agentv1.Envelope_SessionOpen{SessionOpen: &agentv1.SessionOpen{
+				Spec: msg.Spec, Signature: msg.Signature, KeyId: msg.KeyID}}})
 		}
 	}
 }

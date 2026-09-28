@@ -49,7 +49,20 @@ type CommandMsg struct {
 type ControlMsg struct {
 	Type      string    `json:"type"`
 	SessionID uuid.UUID `json:"session_id,omitempty"` // for kick: the session that should survive
+	// For session_open: the signed SessionSpec to forward to the agent.
+	Spec      []byte `json:"spec,omitempty"`
+	Signature []byte `json:"signature,omitempty"`
+	KeyID     string `json:"key_id,omitempty"`
 }
+
+// ControlSessionOpen forwards a signed relay-session grant to the agent.
+const ControlSessionOpen = "session_open"
+
+// RelayKillSubject terminates a relayed session wherever it is paired.
+func RelayKillSubject(sessionID uuid.UUID) string { return "am.relay." + sessionID.String() + ".kill" }
+
+// EventSessionUpdate is published when a relayed session changes state.
+const EventSessionUpdate = "session.updated"
 
 // Event is fanned out to dashboards over SSE.
 type Event struct {

@@ -32,13 +32,14 @@ message Envelope {
     CommandRequest command_request = 31;
     CommandCancel command_cancel = 32;
     ConfigUpdate config_update = 34;
+    SessionOpen session_open = 35;
     Disconnect disconnect = 36;
     Error error = 37;
   }
 
   // Reserved for later phases: UpdateStatus, LogBatch, MetricBatch,
-  // UpdateAvailable, SessionOpen.
-  reserved 17, 18, 19, 33, 35;
+  // UpdateAvailable.
+  reserved 17, 18, 19, 33;
 }
 
 // ---------------------------------------------------------------- handshake
@@ -195,6 +196,29 @@ enum CommandStatus {
   COMMAND_STATUS_TIMED_OUT = 3;
   COMMAND_STATUS_CANCELED = 4;
   COMMAND_STATUS_REJECTED = 5;
+}
+
+// ---------------------------------------------------------------- sessions
+
+// SessionSpec authorizes the agent to open a relayed data session (e.g. an
+// exit-node tunnel). Signed by the control plane with the command key, so a
+// compromised gateway cannot open sessions on its own.
+message SessionSpec {
+  string session_id = 1;
+  string org_id = 2;
+  string device_id = 3;
+  string kind = 4; // "exit_node"
+  string issued_by = 5;
+  google.protobuf.Timestamp issued_at = 6;
+  google.protobuf.Timestamp expires_at = 7; // deadline to join the relay
+  string relay_ticket = 8;                  // single-use ticket for the agent side
+  uint32 max_duration_s = 9;
+}
+
+message SessionOpen {
+  bytes spec = 1;      // serialized SessionSpec
+  bytes signature = 2; // Ed25519 over "agentmesh-session-v1\x00" || spec
+  string key_id = 3;
 }
 
 message CommandResult {

@@ -65,27 +65,6 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 `
 
-func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
-	if err != nil {
-		return err
-	}
-	defer in.Close()
-	tmp := dst + ".new"
-	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
-		return err
-	}
-	if err := out.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp, dst)
-}
-
 func systemctl(args ...string) error {
 	out, err := exec.Command("systemctl", args...).CombinedOutput()
 	if err != nil {
@@ -98,12 +77,17 @@ func installService(exe, stateDir string) error {
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("systemd not found; run '%s run --state-dir %s' under your init system", exe, stateDir)
 	}
-	if abs, _ := filepath.EvalSymlinks(exe); abs != installedBinary {
+	bin := installedBinary
+	abs, _ := filepath.EvalSymlinks(exe)
+	switch {
+	case strings.HasPrefix(abs, "/usr/bin/"):
+		bin = abs // installed by the .deb/.rpm package: use it in place
+	case abs != installedBinary:
 		if err := copyFile(exe, installedBinary, 0o755); err != nil {
 			return fmt.Errorf("install binary: %w", err)
 		}
 	}
-	unit := fmt.Sprintf(unitTemplate, installedBinary, stateDir)
+	unit := fmt.Sprintf(unitTemplate, bin, stateDir)
 	if err := os.WriteFile(systemdUnitPath, []byte(unit), 0o644); err != nil {
 		return err
 	}
@@ -122,7 +106,7 @@ func uninstallService() error {
 		return err
 	}
 	_ = systemctl("daemon-reload")
-	if err := os.Remove(installedBinary); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(installedBinary); err != nil && !os.IsNotExist(err) { // package-managed /usr/bin copy is left to apt/dnf
 		return err
 	}
 	return nil

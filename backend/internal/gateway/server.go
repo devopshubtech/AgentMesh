@@ -52,6 +52,7 @@ type Gateway struct {
 	commands   *commands.Service
 	registry   *registry
 	presence   *presence
+	relays     *relayHub
 
 	enrollRL    *ratelimit.Keyed
 	challengeRL *ratelimit.Keyed
@@ -67,6 +68,7 @@ func New(opts Options, pool *pgxpool.Pool, b *bus.Bus, log *slog.Logger, tokens 
 		enroll:      enrollment.NewService(pool, b),
 		commands:    commands.NewService(pool, b, devSvc, nil, 0),
 		registry:    newRegistry(),
+		relays:      newRelayHub(),
 		enrollRL:    ratelimit.New(10, 5),
 		challengeRL: ratelimit.New(120, 30),
 		deviceRL:    ratelimit.New(20, 10),
@@ -121,6 +123,7 @@ func (g *Gateway) Handler() http.Handler {
 	r.With(bounded).Post(agentapi.PathChallenge, httpx.H(g.handleChallenge))
 	r.With(bounded).Post(agentapi.PathToken, httpx.H(g.handleToken))
 	r.Get(agentapi.PathConnect, httpx.H(g.handleConnect))
+	r.Get(agentapi.PathRelay, httpx.H(g.handleRelay))
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, httpx.NotFound("route")) })
 	return r
 }

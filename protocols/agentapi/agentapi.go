@@ -31,7 +31,27 @@ const (
 	enrollDomain  = "agentmesh-enroll-v1\x00"
 	authDomain    = "agentmesh-auth-v1\x00"
 	commandDomain = "agentmesh-cmd-v1\x00"
+	sessionDomain = "agentmesh-session-v1\x00"
 )
+
+// Relay endpoint (served by agent-gateway). Both the operator client and the
+// agent connect here with a single-use ticket; the gateway pairs them and
+// pipes bytes. The stream inside is multiplexed end to end (see exitproto).
+const (
+	PathRelay         = "/v1/relay"
+	RelaySubprotocol  = "agentmesh.relay.v1"
+	RelayTicketHeader = "X-AgentMesh-Ticket"
+)
+
+// SignSession signs a serialized SessionSpec.
+func SignSession(priv ed25519.PrivateKey, spec []byte) []byte {
+	return ed25519.Sign(priv, append([]byte(sessionDomain), spec...))
+}
+
+// VerifySession verifies a SessionSpec signature.
+func VerifySession(pub ed25519.PublicKey, spec, sig []byte) bool {
+	return len(pub) == ed25519.PublicKeySize && ed25519.Verify(pub, append([]byte(sessionDomain), spec...), sig)
+}
 
 // Error codes returned by the agent endpoints in {"error":{"code":...}}.
 const (

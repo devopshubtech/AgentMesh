@@ -20,6 +20,7 @@ const (
 	PermUsersManage           = "users.manage"
 	PermAuditRead             = "audit.read"
 	PermPlatformAdmin         = "platform.admin"
+	PermSessionsExitNode      = "sessions.exit_node"
 )
 
 // Principal is the authenticated user behind a request.

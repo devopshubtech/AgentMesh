@@ -32,6 +32,12 @@ type Policy struct {
 	DisabledActions []string `json:"disabled_actions,omitempty"`
 	// MaxConcurrentCommands bounds parallel executions. Default 8.
 	MaxConcurrentCommands int `json:"max_concurrent_commands,omitempty"`
+	// AllowExitNode lets authorized operators route their traffic out
+	// through this device. Default false (opt-in by the device owner).
+	AllowExitNode *bool `json:"allow_exit_node,omitempty"`
+	// ExitNodeAllowLAN additionally permits exit traffic to private/LAN
+	// addresses reachable from this device. Default false.
+	ExitNodeAllowLAN bool `json:"exit_node_allow_lan,omitempty"`
 }
 
 func (p Policy) execAllowed() bool  { return p.AllowExec == nil || *p.AllowExec }

@@ -61,7 +61,7 @@ User = {
 }
 ```
 
-Permission keys: `devices.read`, `devices.manage`, `commands.read`, `commands.execute.action`, `commands.execute.exec`, `enrollment.manage`, `users.manage`, `audit.read`, `platform.admin`.
+Permission keys: `devices.read`, `devices.manage`, `commands.read`, `commands.execute.action`, `commands.execute.exec`, `enrollment.manage`, `users.manage`, `audit.read`, `platform.admin`, `sessions.exit_node` (Admin and Super Admin).
 
 ---
 
@@ -135,6 +135,33 @@ Command = {
 | `POST /v1/commands/{id}/cancel` | the same permission that was needed to create it | Only for non-terminal states → `Command` |
 
 Terminal states are `succeeded`, `failed`, `timed_out`, `canceled`, `expired` and `rejected`.
+
+---
+
+## Exit-node sessions (relay)
+
+With an exit-node session, an operator client (the Android app) routes its internet traffic through an agent device. The device must be `active` and `online`, and must declare the `exit_node` capability. That capability is opt-in on the device through the local policy `"allow_exit_node": true`.
+
+```ts
+ExitSession = {
+  id: string, device_id: string, kind: "exit_node",
+  status: "pending" | "active" | "ended",
+  user: { id: string, email: string },
+  client_ip: string, client_label: string,
+  created_at: string, max_ends_at: string,
+  started_at: string | null, ended_at: string | null,
+  end_reason: string | null,    // client_closed | agent_closed | terminated | max_duration | join_timeout | device_revoke | ...
+  bytes_up: number, bytes_down: number
+}
+```
+
+| Method & path | Permission | Notes |
+|---|---|---|
+| `POST /v1/devices/{id}/exit-sessions` | sessions.exit_node | Body `{ "client_label": "Pixel 8" }` (optional). Returns `201 { session: ExitSession, relay_url, ticket, ticket_expires_at }`. Join within 60 s by opening a WebSocket to `relay_url` with header `X-AgentMesh-Ticket: <ticket>` and subprotocol `agentmesh.relay.v1`. The ticket is single-use. You can have at most 3 open sessions, and a session lasts at most 12 h. |
+| `GET /v1/exit-sessions?device_id=&active=true&limit=&cursor=` | sessions.exit_node or audit.read | Without `audit.read` you only see your own sessions. |
+| `DELETE /v1/exit-sessions/{id}` | the session owner (sessions.exit_node) or devices.manage | Terminates the session and returns the `ExitSession`. |
+
+Inside the relay WebSocket, the two ends speak yamux with the `exitproto` stream protocol (`protocols/exitproto`). Each stream is one TCP or UDP flow, and the agent performs the real dial. By default the agent refuses loopback, link-local, multicast and private/LAN destinations, and checks the address after DNS resolution. Setting `"exit_node_allow_lan": true` on the device permits LAN destinations. Session start and end are audited (`session.create`, `session.terminate`, `session.end`).
 
 ---
 

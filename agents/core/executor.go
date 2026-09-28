@@ -64,6 +64,9 @@ func (x *executor) capabilities() []string {
 			caps = append(caps, "action."+a)
 		}
 	}
+	if x.policy.exitNodeAllowed() {
+		caps = append(caps, "exit_node")
+	}
 	return caps
 }
 

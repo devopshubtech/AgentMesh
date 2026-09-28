@@ -7,6 +7,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -121,22 +122,29 @@ func devCerts(args []string) error {
 		return err
 	}
 
-	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return err
-	}
 	serial := func() *big.Int { n, _ := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 127)); return n }
 	now := time.Now()
-	caTmpl := &x509.Certificate{
-		SerialNumber: serial(), Subject: pkix.Name{CommonName: "AgentMesh Dev CA", Organization: []string{"AgentMesh (development)"}},
-		NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(2, 0, 0),
-		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign, BasicConstraintsValid: true, IsCA: true, MaxPathLenZero: true,
-	}
-	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	// Reuse an existing CA so already-enrolled agents (which copied ca.pem)
+	// keep trusting the re-issued gateway certificate.
+	caKey, ca, reused, err := loadCA(*out)
 	if err != nil {
 		return err
 	}
-	ca, _ := x509.ParseCertificate(caDER)
+	if !reused {
+		if caKey, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
+			return err
+		}
+		caTmpl := &x509.Certificate{
+			SerialNumber: serial(), Subject: pkix.Name{CommonName: "AgentMesh Dev CA", Organization: []string{"AgentMesh (development)"}},
+			NotBefore: now.Add(-time.Hour), NotAfter: now.AddDate(2, 0, 0),
+			KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign, BasicConstraintsValid: true, IsCA: true, MaxPathLenZero: true,
+		}
+		caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+		if err != nil {
+			return err
+		}
+		ca, _ = x509.ParseCertificate(caDER)
+	}
 
 	srvKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -159,13 +167,15 @@ func devCerts(args []string) error {
 	if err != nil {
 		return err
 	}
-	caKeyDER, _ := x509.MarshalECPrivateKey(caKey)
 	srvKeyDER, _ := x509.MarshalECPrivateKey(srvKey)
-	if err := writePEM(filepath.Join(*out, "ca.pem"), "CERTIFICATE", caDER, 0o644); err != nil {
-		return err
-	}
-	if err := writePEM(filepath.Join(*out, "ca-key.pem"), "EC PRIVATE KEY", caKeyDER, 0o600); err != nil {
-		return err
+	if !reused {
+		caKeyDER, _ := x509.MarshalECPrivateKey(caKey)
+		if err := writePEM(filepath.Join(*out, "ca.pem"), "CERTIFICATE", ca.Raw, 0o644); err != nil {
+			return err
+		}
+		if err := writePEM(filepath.Join(*out, "ca-key.pem"), "EC PRIVATE KEY", caKeyDER, 0o600); err != nil {
+			return err
+		}
 	}
 	if err := writePEM(filepath.Join(*out, "gateway.pem"), "CERTIFICATE", srvDER, 0o644); err != nil {
 		return err
@@ -173,9 +183,45 @@ func devCerts(args []string) error {
 	if err := writePEM(filepath.Join(*out, "gateway-key.pem"), "EC PRIVATE KEY", srvKeyDER, 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("wrote %s/{ca.pem,ca-key.pem,gateway.pem,gateway-key.pem} (SANs: %s)\n", *out, *hosts)
-	fmt.Println("agents must be given ca.pem via --ca-file to trust this development CA")
+	state := "created new CA"
+	if reused {
+		state = "reused existing CA"
+	}
+	fp := sha256.Sum256(ca.Raw)
+	fmt.Printf("wrote %s/gateway.pem (SANs: %s); %s\n", *out, *hosts, state)
+	fmt.Printf("CA SHA-256 fingerprint: %s\n", colonHex(fp[:]))
+	fmt.Println("agents must be given ca.pem via --ca-file; the Android app shows this fingerprint when trusting the server")
 	return nil
+}
+
+func colonHex(b []byte) string {
+	parts := make([]string, len(b))
+	for i, x := range b {
+		parts[i] = fmt.Sprintf("%02X", x)
+	}
+	return strings.Join(parts, ":")
+}
+
+func loadCA(dir string) (*ecdsa.PrivateKey, *x509.Certificate, bool, error) {
+	certPEM, err1 := os.ReadFile(filepath.Join(dir, "ca.pem"))
+	keyPEM, err2 := os.ReadFile(filepath.Join(dir, "ca-key.pem"))
+	if err1 != nil || err2 != nil {
+		return nil, nil, false, nil
+	}
+	cb, _ := pem.Decode(certPEM)
+	kb, _ := pem.Decode(keyPEM)
+	if cb == nil || kb == nil {
+		return nil, nil, false, fmt.Errorf("existing CA files in %s are not valid PEM", dir)
+	}
+	cert, err := x509.ParseCertificate(cb.Bytes)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	key, err := x509.ParseECPrivateKey(kb.Bytes)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	return key, cert, true, nil
 }
 
 func migrate(args []string) error {

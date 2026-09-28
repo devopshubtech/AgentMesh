@@ -24,6 +24,7 @@ import (
 	"github.com/enfec/agentmesh/backend/internal/platform/bus"
 	"github.com/enfec/agentmesh/backend/internal/platform/httpx"
 	"github.com/enfec/agentmesh/backend/internal/platform/ratelimit"
+	"github.com/enfec/agentmesh/backend/internal/sessions"
 	"github.com/enfec/agentmesh/backend/internal/users"
 )
 
@@ -32,18 +33,20 @@ var Version = "0.1.0-dev"
 
 // Deps are the services the API needs.
 type Deps struct {
-	Pool         *pgxpool.Pool
-	Bus          *bus.Bus
-	Log          *slog.Logger
-	Sessions     *auth.SessionService
-	Users        *users.Service
-	Devices      *devices.Service
-	Commands     *commands.Service
-	Enrollment   *enrollment.Service
-	Hub          *events.Hub
-	GatewayURL   string
-	CookieSecure bool
-	TrustProxy   bool
+	Pool       *pgxpool.Pool
+	Bus        *bus.Bus
+	Log        *slog.Logger
+	Sessions   *auth.SessionService
+	Users      *users.Service
+	Devices    *devices.Service
+	Commands   *commands.Service
+	Enrollment *enrollment.Service
+	// RemoteSessions manages relayed exit-node sessions (Sessions is user auth).
+	RemoteSessions *sessions.Service
+	Hub            *events.Hub
+	GatewayURL     string
+	CookieSecure   bool
+	TrustProxy     bool
 }
 
 // Server holds handler state.
@@ -94,6 +97,10 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/devices/{id}/activity", httpx.H(s.deviceActivity))
 			r.Get("/devices/{id}/commands", httpx.H(s.listCommands))
 			r.Post("/devices/{id}/commands", httpx.H(s.createCommand))
+
+			r.Post("/devices/{id}/exit-sessions", httpx.H(s.createExitSession))
+			r.Get("/exit-sessions", httpx.H(s.listExitSessions))
+			r.Delete("/exit-sessions/{id}", httpx.H(s.terminateExitSession))
 
 			r.Get("/commands/{id}", httpx.H(s.getCommand))
 			r.Post("/commands/{id}/cancel", httpx.H(s.cancelCommand))

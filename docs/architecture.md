@@ -931,6 +931,16 @@ This section records where the Phase 1 code differs from the plan above, and why
 | Email uniqueness | per org | Globally unique | Login is by email only. This will be revisited with SSO and multiple orgs. |
 | macOS agent | Phase 2 | The core builds and runs in the foreground on darwin. `install` reports "Phase 2". | Service install and packaging are planned for Phase 2. |
 
+**Exit-node sessions (pulled forward from Phase 3/4, 2026-09-28).** The Android control app can route the phone's traffic through an agent. The design follows §10:
+
+- **Grant:** control-api signs a `SessionSpec` (Ed25519, domain `agentmesh-session-v1`) that carries a single-use relay ticket, and sends it as `SessionOpen` over the agent's control channel. The agent verifies the signature, the device and org binding, the expiry and replay before joining.
+- **Relay:** the agent-gateway serves `/v1/relay` and pairs the client and agent WebSockets by session, then pipes bytes between them. It counts bytes, enforces a 12 h maximum, and handles terminate, revoke and disable. It never parses the stream.
+- **Stream protocol:** end to end it is yamux + `exitproto`, with one stream per TCP or UDP flow. The agent dials the destination and refuses loopback, link-local and private destinations unless local policy allows LAN access. The check applies to the resolved IP.
+- **Phone engine:** gVisor netstack (tun2socks core) on the `VpnService` file descriptor, compiled with gomobile.
+- **Opt-in:** the device requires `allow_exit_node` in its local policy, and the user requires the `sessions.exit_node` permission.
+- **Audit:** `session.create`, `session.terminate` and `session.end` are recorded with byte counts.
+- **Limitation:** both relay sides must reach the same gateway replica. A session-affinity or session-relay tier remains Phase 4.
+
 **What was verified end to end on the development machine (2026-09-28).**
 
 - **Linux agent (container), full lifecycle:** enroll → pending → approve → online, inventory, argv exec, shell exec with exit-code propagation, actions, timeout with process-group kill, and cancel.

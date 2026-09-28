@@ -7,7 +7,8 @@
 #   nats           ${AM_NATS_PORT:-14222}        -> 4222   (monitor ${AM_NATS_MON_PORT:-18222} -> 8222)
 #   control-api    ${AM_API_PORT:-18080}         -> 8080
 #   agent-gateway  ${AM_GATEWAY_PORT:-18443}     -> 8443   (TLS, dev CA in ./certs)
-#   dashboard      ${AM_DASHBOARD_PORT:-13000}   -> 80
+#   dashboard      ${AM_DASHBOARD_PORT:-13000}   -> 80    (localhost)
+#                  ${AM_DASHBOARD_TLS_PORT:-13443} -> 443 (HTTPS on the LAN: Android app)
 #
 # First run:  scripts/dev-setup.ps1 (or .sh)  — generates .env, keys and certs.
 name: agentmesh
@@ -114,8 +115,13 @@ services:
       context: ../../dashboard
     image: agentmesh/dashboard:dev
     restart: unless-stopped
+    volumes:
+      - ./nginx-tls.conf:/etc/nginx/conf.d/tls.conf:ro
+      - ./certs:/certs:ro
     ports:
       - "127.0.0.1:${AM_DASHBOARD_PORT:-13000}:80"
+      # HTTPS for LAN clients (Android control app); all interfaces.
+      - "${AM_DASHBOARD_TLS_PORT:-13443}:443"
     depends_on:
       control-api: { condition: service_healthy }
 

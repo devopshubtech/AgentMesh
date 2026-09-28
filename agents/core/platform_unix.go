@@ -4,6 +4,7 @@ package core
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"syscall"
@@ -38,3 +39,24 @@ func prepareCommand(cmd *exec.Cmd) {
 }
 
 func isPrivileged() bool { return os.Geteuid() == 0 }
+
+func copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	tmp := dst + ".new"
+	out, err := os.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp, dst)
+}

@@ -58,6 +58,7 @@ func (w *Worker) Run(ctx context.Context) {
 		{"reap_offline_devices", 10 * time.Second, w.reapOffline},
 		{"expire_commands", 15 * time.Second, w.expireCommands},
 		{"gc_auth", 5 * time.Minute, w.gcAuth},
+		{"expire_relay_sessions", 30 * time.Second, w.expireRelaySessions},
 		{"heartbeat_partitions", time.Hour, w.managePartitions},
 		{"verify_audit_chain", 6 * time.Hour, w.verifyAudit},
 	}
@@ -191,6 +192,33 @@ func (w *Worker) expireCommands(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// expireRelaySessions ends sessions nobody joined in time and sessions that
+// outlived their maximum duration (e.g. their gateway crashed).
+func (w *Worker) expireRelaySessions(ctx context.Context) error {
+	rows, err := w.pool.Query(ctx, `
+		UPDATE remote_sessions SET status = 'ended', ended_at = now(),
+		       end_reason = CASE WHEN status = 'pending' THEN 'join_timeout' ELSE 'expired' END
+		WHERE (status = 'pending' AND join_deadline < now() - interval '30 seconds')
+		   OR (status = 'active' AND max_ends_at < now() - interval '1 minute')
+		RETURNING id, device_id, org_id`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, dev, org uuid.UUID
+		if err := rows.Scan(&id, &dev, &org); err != nil {
+			return err
+		}
+		w.bus.PublishEvent(org, bus.EventSessionUpdate, map[string]any{"session_id": id, "device_id": dev, "status": "ended"})
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	_, err = w.pool.Exec(ctx, `DELETE FROM relay_tickets WHERE expires_at < now()`)
+	return err
 }
 
 // gcAuth deletes expired challenges and long-dead user sessions.

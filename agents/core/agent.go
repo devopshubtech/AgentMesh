@@ -482,6 +482,8 @@ func (a *Agent) handle(c *conn, env *agentv1.Envelope) {
 	switch b := env.Body.(type) {
 	case *agentv1.Envelope_CommandRequest:
 		a.onCommand(c, b.CommandRequest)
+	case *agentv1.Envelope_SessionOpen:
+		a.onSessionOpen(b.SessionOpen)
 	case *agentv1.Envelope_CommandCancel:
 		a.log.Info("cancel requested", "command_id", b.CommandCancel.GetCommandId())
 		a.exec.cancel(b.CommandCancel.GetCommandId())

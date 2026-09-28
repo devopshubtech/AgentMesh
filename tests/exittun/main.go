@@ -1,0 +1,178 @@
+//go:build linux
+
+// Command exittun exercises the Android exit-node engine on Linux with a real
+// TUN device: it logs in, opens an exit session to a device, routes selected
+// destinations into the TUN and runs real traffic through the agent.
+//
+// Run in a container with NET_ADMIN and /dev/net/tun (see README).
+package main
+
+import (
+	"bytes"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+	"unsafe"
+
+	"golang.org/x/sys/unix"
+
+	"github.com/enfec/agentmesh/mobile/tunnel"
+)
+
+func must(err error, what string) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "FAIL %s: %v\n", what, err)
+		os.Exit(1)
+	}
+}
+
+func post(url, token string, body any, out any) error {
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", url, bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := apiClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		var e map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&e)
+		return fmt.Errorf("HTTP %d: %v", resp.StatusCode, e)
+	}
+	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+var apiClient = http.DefaultClient
+
+func openTun(name string) (int, error) {
+	fd, err := unix.Open("/dev/net/tun", unix.O_RDWR|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, err
+	}
+	var ifr [unix.IFNAMSIZ + 64]byte
+	copy(ifr[:], name)
+	*(*uint16)(unsafe.Pointer(&ifr[unix.IFNAMSIZ])) = unix.IFF_TUN | unix.IFF_NO_PI
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(unix.TUNSETIFF), uintptr(unsafe.Pointer(&ifr[0]))); errno != 0 {
+		unix.Close(fd)
+		return -1, errno
+	}
+	return fd, nil
+}
+
+func sh(args ...string) (string, error) {
+	out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
+	return strings.TrimSpace(string(out)), err
+}
+
+func main() {
+	api := flag.String("api", "http://control-api:8080", "control-api URL")
+	email := flag.String("email", os.Getenv("AM_ADMIN_EMAIL"), "operator email")
+	password := flag.String("password", os.Getenv("AM_ADMIN_PASSWORD"), "operator password")
+	device := flag.String("device", "", "exit-node device id")
+	relay := flag.String("relay", "", "override relay URL returned by the API")
+	caFile := flag.String("ca", "", "CA PEM for the gateway")
+	lanProbe := flag.String("lan-probe", "192.168.30.1", "private address that the agent must refuse")
+	dnsServer := flag.String("dns", "1.1.1.1", "public DNS server to query through the tunnel (must be routed into the TUN)")
+	flag.Parse()
+	if *caFile != "" {
+		pem, err := os.ReadFile(*caFile)
+		must(err, "read CA")
+		pool := x509.NewCertPool()
+		pool.AppendCertsFromPEM(pem)
+		apiClient = &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
+	}
+
+	var login struct {
+		AccessToken string `json:"access_token"`
+	}
+	must(post(*api+"/v1/auth/login", "", map[string]string{"email": *email, "password": *password, "client": "mobile"}, &login), "login")
+	var sess struct {
+		Session struct {
+			ID string `json:"id"`
+		} `json:"session"`
+		RelayURL string `json:"relay_url"`
+		Ticket   string `json:"ticket"`
+	}
+	must(post(*api+"/v1/devices/"+*device+"/exit-sessions", login.AccessToken, map[string]string{"client_label": "exittun-harness"}, &sess), "create exit session")
+	if *relay != "" {
+		sess.RelayURL = *relay
+	}
+	fmt.Println("session", sess.Session.ID, "relay", sess.RelayURL)
+
+	fd, err := openTun("amtun0")
+	must(err, "open tun")
+	for _, cmd := range [][]string{
+		{"ip", "addr", "add", "10.111.0.2/24", "dev", "amtun0"},
+		{"ip", "link", "set", "amtun0", "up", "mtu", "1500"},
+		{"ip", "route", "add", "1.1.1.1/32", "dev", "amtun0"},
+		{"ip", "route", "add", "8.8.8.8/32", "dev", "amtun0"},
+		{"ip", "route", "add", *lanProbe + "/32", "dev", "amtun0"},
+	} {
+		out, err := sh(cmd...)
+		must(err, strings.Join(cmd, " ")+": "+out)
+	}
+	ca := ""
+	if *caFile != "" {
+		b, err := os.ReadFile(*caFile)
+		must(err, "read CA")
+		ca = string(b)
+	}
+	eng := tunnel.NewEngine()
+	must(eng.Start(fd, sess.RelayURL, sess.Ticket, ca, 1500), "start engine")
+	fmt.Println("tunnel up")
+
+	ok := true
+	check := func(name string, cond bool, detail string) {
+		mark := "ok  "
+		if !cond {
+			mark, ok = "FAIL", false
+		}
+		fmt.Printf("%s %s: %s\n", mark, name, detail)
+	}
+	trace, err := sh("curl", "-s", "--max-time", "15", "https://1.1.1.1/cdn-cgi/trace")
+	ip := ""
+	for _, l := range strings.Split(trace, "\n") {
+		if strings.HasPrefix(l, "ip=") {
+			ip = strings.TrimPrefix(l, "ip=")
+		}
+	}
+	check("TCP/TLS via exit node (Cloudflare sees this IP)", err == nil && ip != "", ip)
+	dns, err := sh("nslookup", "example.com", *dnsServer)
+	check("UDP DNS via exit node", err == nil && strings.Contains(dns, "Address"), firstLine(dns, "Address:", 2)+" | raw: "+strings.ReplaceAll(dns, "\n", " / "))
+	_, err = sh("curl", "-s", "--max-time", "6", "http://"+*lanProbe+"/")
+	check("private LAN destination refused by agent", err != nil, fmt.Sprintf("failed_flows=%d", eng.FailedFlows()))
+	check("counters", eng.BytesDown() > 0 && eng.Flows() >= 2,
+		fmt.Sprintf("flows=%d up=%dB down=%dB", eng.Flows(), eng.BytesUp(), eng.BytesDown()))
+
+	eng.Stop()
+	time.Sleep(time.Second)
+	check("engine stopped", !eng.IsRunning(), "last_error="+eng.LastError())
+	if !ok {
+		os.Exit(1)
+	}
+	fmt.Println("ALL CHECKS PASSED")
+}
+
+func firstLine(s, prefix string, nth int) string {
+	n := 0
+	for _, l := range strings.Split(s, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(l), prefix) {
+			n++
+			if n == nth {
+				return strings.TrimSpace(l)
+			}
+		}
+	}
+	return ""
+}

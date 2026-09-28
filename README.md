@@ -13,13 +13,54 @@ A cross-platform device management and secure remote-access platform. You instal
 | Backend | Go backend (control-api, agent-gateway, worker), PostgreSQL, NATS |
 | Devices | Enrollment tokens with approval; device authentication with a P-256 key proof → short-lived token |
 | Agent connection | WSS + Protobuf protocol; heartbeat and inventory; online/offline status |
-| Agents | Linux agent (systemd) and Windows agent (Windows Service, DPAPI) |
+| Agents | Linux agent (systemd, .deb/.rpm), Windows agent (Windows Service, DPAPI), macOS agent (launchd; built but not yet tested on a Mac) |
+| Android | Control app with exit node: route the phone's traffic through an agent device |
 | Commands | Signed command execution with live output, cancel, timeouts and replay protection |
 | Security | RBAC (Super Admin, Admin, Operator, Viewer); append-only, hash-chained audit log |
 | Dashboard | React web dashboard |
 | Deployment | Docker Compose; reference Kubernetes manifests |
 
 Phases 2 to 4 (macOS, artifacts and updates, metrics, mobile, remote sessions) are planned in the architecture doc.
+
+---
+
+## Downloads
+
+Every file is attached to this repo's **[Releases](https://github.com/devopshubtech/AgentMesh/releases/latest)**, along with a `SHA256SUMS` file.
+
+| Platform | Download (v0.2.0) |
+|---|---|
+| **Android app** (control + exit node) | [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
+| Windows x64 | [agentmesh-agent_0.2.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_windows_amd64.zip) |
+| Windows ARM64 | [agentmesh-agent_0.2.0_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_windows_arm64.zip) |
+| macOS Apple Silicon | [agentmesh-agent_0.2.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_darwin_arm64.tar.gz) |
+| macOS Intel | [agentmesh-agent_0.2.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_darwin_amd64.tar.gz) |
+| Debian / Ubuntu x64 | [agentmesh-agent_0.2.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_amd64.deb) |
+| Debian / Ubuntu ARM64 | [agentmesh-agent_0.2.0_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_arm64.deb) |
+| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.2.0_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_armhf.deb) |
+| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.2.0-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent-0.2.0-1.x86_64.rpm) |
+| RHEL / Fedora ARM64 | [agentmesh-agent-0.2.0-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent-0.2.0-1.aarch64.rpm) |
+| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.2.0/agentmesh-agent_0.2.0_linux_armv7.tar.gz) |
+
+**One-line install.** These always pull the latest release and check the SHA-256 before installing. Get `<gateway>` and the token from the dashboard's **Enrollment** page. Add `--ca-file ca.pem` when the server uses a private or development CA, and `--enable-exit-node` to let this device act as an exit node.
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/devopshubtech/AgentMesh/main/scripts/install/install.sh \
+  | sudo sh -s -- --server https://<gateway>:18443 --token am_enr_...
+```
+
+```powershell
+# Windows (elevated PowerShell)
+irm https://raw.githubusercontent.com/devopshubtech/AgentMesh/main/scripts/install/install.ps1 -OutFile install.ps1
+.\install.ps1 -Server https://<gateway>:18443 -Token am_enr_...
+```
+
+**Installing a package directly:**
+- `.deb` / `.rpm`: `sudo apt install ./agentmesh-agent_*.deb` or `sudo dnf install ./agentmesh-agent-*.rpm`, then `sudo agentmesh-agent install --server … --token …`.
+- zip / tar.gz: extract, then run the bundled `install.ps1` / `install.sh` with the same arguments.
+
+**Code signing (not done yet).** The agent binaries are not code-signed. Windows SmartScreen may warn; choose "More info → Run anyway". On macOS, the installer clears the quarantine flag. The APK is signed with the project's release key; allow "Install unknown apps" on the phone.
 
 ---
 
@@ -97,6 +138,53 @@ $env:GOOS="windows"; go build -trimpath -o dist/agentmesh-agent-windows-amd64.ex
 ```
 
 On Linux or macOS you can use `make agents` instead.
+
+---
+
+## Android control app + exit node
+
+The Android app (`mobile/android-control`) lets an operator:
+
+- sign in and see devices, their status and inventory;
+- run actions and commands, and approve, disable or enable devices;
+- **route the phone's internet traffic through an agent device** (the *exit node*). Websites then see that device's IP address.
+
+**How it works.** The phone runs an Android VPN (`VpnService`). A Go engine, bound with gomobile, terminates each TCP or UDP flow and carries it over the AgentMesh relay (WSS to the agent-gateway) to the agent. The agent dials the real destination with ordinary sockets, so it needs no drivers and works on Windows, macOS and Linux, wherever the agent runs, as long as it can reach the backend.
+
+```text
+Phone apps ─▶ Android VPN (TUN) ─▶ Go engine ═WSS/yamux═▶ agent-gateway relay ═WSS═▶ agent ─▶ internet
+```
+
+**1. Allow the exit node on the device.** This is the device owner's decision, so it lives in the local policy (off by default):
+
+```powershell
+agentmesh-agent install --server ... --token ... --enable-exit-node
+```
+
+Or edit `<state-dir>/agent.json` → `"policy": { "allow_exit_node": true }` and restart the agent. By default the agent refuses destinations on its own machine or private LAN. Add `"exit_node_allow_lan": true` to permit LAN destinations.
+
+**2. Build the APK.** Everything runs in Docker; no local Android SDK is needed.
+
+```powershell
+docker build -f infrastructure/docker/android-build.Dockerfile -t agentmesh/android-build:dev infrastructure/docker
+docker run --rm -v "${PWD}:/src" -v agentmesh-gradle:/root/.gradle -v agentmesh-gomod:/root/go/pkg/mod `
+  agentmesh/android-build:dev sh mobile/android-control/build.sh
+# → dist/agentmesh-control.apk (release-signed with a local key in mobile/android-control/keystore/, git-ignored)
+```
+
+**3. Connect the phone.**
+
+- **Server URL:** `https://<laptop-LAN-IP>:13443` (for example `https://192.168.30.144:13443`).
+- **Settings:** set `AM_PUBLIC_GATEWAY_URL=https://<LAN-IP>:18443` in `infrastructure/docker/.env`. Then re-issue the certificate so it includes the LAN IP: `go run ./backend/cmd/amctl dev-certs -out infrastructure/docker/certs -hosts localhost,127.0.0.1,agent-gateway,dashboard,<LAN-IP>`. This reuses the existing CA.
+- **Development CA:** choose *"Private / development server: trust its CA…"* in the app. Compare the SHA-256 fingerprint it shows with the one `amctl dev-certs` prints.
+- **Sign in:** use a user with the `sessions.exit_node` permission (Admin or Super Admin). Open the device and tap **Use as exit node**, then **Check my IP**.
+
+**Scope and limits (MVP).**
+
+- **DNS:** the phone uses 1.1.1.1 / 1.0.0.1, resolved through the tunnel.
+- **Local network:** on Android 13+ private LAN ranges stay on the local network. On older versions all traffic goes through the tunnel, so LAN destinations are refused by the agent.
+- **Gateways:** both sides of a relay must reach the same gateway replica.
+- **Duration:** sessions last at most 12 hours and are fully audited.
 
 ---
 

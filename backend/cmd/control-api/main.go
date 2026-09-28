@@ -22,6 +22,7 @@ import (
 	"github.com/enfec/agentmesh/backend/internal/platform/db"
 	"github.com/enfec/agentmesh/backend/internal/platform/keys"
 	"github.com/enfec/agentmesh/backend/internal/platform/logging"
+	"github.com/enfec/agentmesh/backend/internal/sessions"
 	"github.com/enfec/agentmesh/backend/internal/users"
 	"github.com/enfec/agentmesh/backend/migrations"
 )
@@ -79,15 +80,16 @@ func run(cfg config.API, log *slog.Logger) error {
 	devSvc := devices.NewService(pool, b)
 	srv := api.New(api.Deps{
 		Pool: pool, Bus: b, Log: log,
-		Sessions:     auth.NewSessionService(pool, auth.NewTokenIssuer(userKey, auth.AudienceAPI, cfg.AccessTokenTTL), log),
-		Users:        users.NewService(pool),
-		Devices:      devSvc,
-		Commands:     commands.NewService(pool, b, devSvc, cmdKey, cfg.CommandDefaultTTL),
-		Enrollment:   enrollment.NewService(pool, b),
-		Hub:          hub,
-		GatewayURL:   cfg.PublicGatewayURL,
-		CookieSecure: cfg.CookieSecure,
-		TrustProxy:   cfg.TrustProxyHeaders,
+		Sessions:       auth.NewSessionService(pool, auth.NewTokenIssuer(userKey, auth.AudienceAPI, cfg.AccessTokenTTL), log),
+		Users:          users.NewService(pool),
+		Devices:        devSvc,
+		Commands:       commands.NewService(pool, b, devSvc, cmdKey, cfg.CommandDefaultTTL),
+		Enrollment:     enrollment.NewService(pool, b),
+		RemoteSessions: sessions.NewService(pool, b, devSvc, cmdKey),
+		Hub:            hub,
+		GatewayURL:     cfg.PublicGatewayURL,
+		CookieSecure:   cfg.CookieSecure,
+		TrustProxy:     cfg.TrustProxyHeaders,
 	})
 
 	httpSrv := &http.Server{

@@ -129,6 +129,7 @@ func cmdEnroll(args []string, install bool) error {
 	stateDir := fs.String("state-dir", defaultStateDir(), "state directory")
 	insecure := fs.Bool("allow-insecure-http", false, "allow http:// server URL (development only)")
 	force := fs.Bool("force", false, "replace an existing identity")
+	exitNode := fs.Bool("enable-exit-node", false, "allow authorized operators to route traffic through this device")
 	_ = fs.Parse(args)
 
 	if *server == "" {
@@ -147,6 +148,10 @@ func cmdEnroll(args []string, install bool) error {
 	cfg := &Config{ServerURL: *server, AllowInsecureHTTP: *insecure, stateDir: *stateDir}
 	if old, err := LoadConfig(*stateDir); err == nil {
 		cfg.Policy = old.Policy // keep local policy across re-enrollment
+	}
+	if *exitNode {
+		yes := true
+		cfg.Policy.AllowExitNode = &yes
 	}
 	if *caFile != "" {
 		// Copy the CA next to the config so the service does not depend on
@@ -222,6 +227,7 @@ func cmdStatus(args []string) error {
 	}
 	fmt.Printf("Device ID:   %s\nServer:      %s\nEnrolled at: %s\nKey storage: %s\nRevoked:     %v\nVersion:     %s\n",
 		id.DeviceID, cfg.ServerURL, id.EnrolledAt.Format(time.RFC3339), id.KeyProtection, id.Revoked, Version)
-	fmt.Printf("Policy:      exec=%v shell=%v disabled_actions=%v\n", cfg.Policy.execAllowed(), cfg.Policy.shellAllowed(), cfg.Policy.DisabledActions)
+	fmt.Printf("Policy:      exec=%v shell=%v exit_node=%v (lan=%v) disabled_actions=%v\n", cfg.Policy.execAllowed(), cfg.Policy.shellAllowed(),
+		cfg.Policy.exitNodeAllowed(), cfg.Policy.ExitNodeAllowLAN, cfg.Policy.DisabledActions)
 	return nil
 }

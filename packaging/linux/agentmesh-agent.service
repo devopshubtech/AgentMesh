@@ -1,0 +1,18 @@
+[Unit]
+Description=AgentMesh device agent
+Documentation=https://github.com/devopshubtech/AgentMesh
+After=network-online.target
+Wants=network-online.target
+# Only start once the device has been enrolled.
+ConditionPathExists=/var/lib/agentmesh/identity.json
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/agentmesh-agent run --state-dir /var/lib/agentmesh
+Restart=always
+RestartSec=5
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
