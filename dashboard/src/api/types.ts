@@ -35,7 +35,8 @@ export type Permission =
   | 'enrollment.manage'
   | 'users.manage'
   | 'audit.read'
-  | 'platform.admin';
+  | 'platform.admin'
+  | 'sessions.exit_node';
 
 export type UserStatus = 'active' | 'disabled';
 export type RoleName = 'super_admin' | 'admin' | 'operator' | 'viewer';
@@ -319,4 +320,32 @@ export interface CommandOutputEvent {
   stream: 'stdout' | 'stderr';
   seq: number;
   data: string;
+}
+
+// ---------------------------------------------------------------- exit-node sessions
+
+export type ExitSessionStatus = 'pending' | 'active' | 'ended';
+
+/** A phone (or other client) routing its traffic through a device. */
+export interface ExitSession {
+  id: string;
+  device_id: string;
+  kind: 'exit_node';
+  status: ExitSessionStatus;
+  user: { id: string; email: string };
+  client_ip: string;
+  client_label: string;
+  created_at: string;
+  max_ends_at: string;
+  started_at: string | null;
+  ended_at: string | null;
+  end_reason: string | null;
+  bytes_up: number;
+  bytes_down: number;
+}
+
+export interface SessionUpdatedEvent {
+  session_id: string;
+  device_id: string;
+  status: ExitSessionStatus;
 }

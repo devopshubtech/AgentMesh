@@ -1,9 +1,13 @@
 package io.agentmesh.control
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -35,6 +39,26 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        askBatteryExemptionOnce()
+        startExitWithConsent(d)
+    }
+
+    /**
+     * Battery savers (notably OnePlus/Oppo/Xiaomi) freeze backgrounded apps even
+     * while their VPN is active, which drops the tunnel after ~1 minute. Ask
+     * once to exempt this app.
+     */
+    private fun askBatteryExemptionOnce() {
+        val pm = getSystemService(PowerManager::class.java)
+        val prefs = getSharedPreferences("agentmesh", MODE_PRIVATE)
+        if (pm.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("asked_battery", false)) return
+        prefs.edit().putBoolean("asked_battery", true).apply()
+        runCatching {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        }
+    }
+
+    private fun startExitWithConsent(d: Device) {
         val consent = VpnService.prepare(this)
         if (consent == null) vm.startExit(d) else {
             pendingExit = d

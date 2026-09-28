@@ -43,8 +43,10 @@ const (
 func YamuxConfig() *yamux.Config {
 	c := yamux.DefaultConfig()
 	c.EnableKeepAlive = true
-	c.KeepAliveInterval = 20 * time.Second
-	c.ConnectionWriteTimeout = 15 * time.Second
+	// Phones may stall a backgrounded app for tens of seconds (battery
+	// savers); tolerate ~60s without a pong before declaring the link dead.
+	c.KeepAliveInterval = 30 * time.Second
+	c.ConnectionWriteTimeout = 30 * time.Second
 	c.MaxStreamWindowSize = 1 << 20 // 1 MiB per stream: good throughput on high-latency links
 	c.StreamOpenTimeout = HandshakeLimit
 	c.LogOutput = io.Discard

@@ -10,6 +10,7 @@ import type {
   Device,
   DeviceStatusEvent,
   DeviceUpdatedEvent,
+  SessionUpdatedEvent,
 } from './types';
 import type { DeviceListData } from './devices';
 
@@ -84,6 +85,14 @@ export function handleEvent(qc: QueryClient, msg: SseMessage): void {
       }
       break;
     }
+    case 'session.updated': {
+      const ev = parse<SessionUpdatedEvent>(msg.data);
+      if (ev?.device_id) {
+        void qc.invalidateQueries({ queryKey: qk.sessions.byDevice(ev.device_id) });
+        void qc.invalidateQueries({ queryKey: qk.devices.activity(ev.device_id) });
+      }
+      break;
+    }
     case 'command.output': {
       const ev = parse<CommandOutputEvent>(msg.data);
       if (ev?.command_id) appendOutput(ev);
@@ -126,6 +135,7 @@ export function useLiveEvents(enabled: boolean): SseStatus {
     if (openedBefore.current) {
       void qc.invalidateQueries({ queryKey: qk.devices.all, refetchType: 'active' });
       void qc.invalidateQueries({ queryKey: qk.commands.all, refetchType: 'active' });
+      void qc.invalidateQueries({ queryKey: qk.sessions.all, refetchType: 'active' });
     }
     openedBefore.current = true;
   }, [status, qc]);

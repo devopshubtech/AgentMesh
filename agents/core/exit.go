@@ -131,17 +131,31 @@ func (a *Agent) runExitSession(spec *agentv1.SessionSpec) {
 	defer cancel()
 	log := a.log.With("session_id", spec.GetSessionId())
 
-	dctx, dcancel := context.WithTimeout(ctx, 30*time.Second)
-	ws, _, err := websocket.Dial(dctx, relayURL(a.cfg.ServerURL), &websocket.DialOptions{
-		HTTPClient:      a.client.http,
-		HTTPHeader:      http.Header{agentapi.RelayTicketHeader: {spec.GetRelayTicket()}, "User-Agent": {"agentmesh-agent/" + Version}},
-		Subprotocols:    []string{agentapi.RelaySubprotocol},
-		CompressionMode: websocket.CompressionDisabled,
-	})
-	dcancel()
-	if err != nil {
-		log.Error("join relay failed", "err", err)
-		return
+	// Retry transient failures until the join deadline; the phone is waiting.
+	deadline := spec.GetExpiresAt().AsTime().Add(-time.Duration(a.clockOffset.Load()))
+	var ws *websocket.Conn
+	for attempt := 1; ; attempt++ {
+		dctx, dcancel := context.WithTimeout(ctx, 15*time.Second)
+		c, resp, err := websocket.Dial(dctx, relayURL(a.cfg.ServerURL), &websocket.DialOptions{
+			HTTPClient:      a.client.http,
+			HTTPHeader:      http.Header{agentapi.RelayTicketHeader: {spec.GetRelayTicket()}, "User-Agent": {"agentmesh-agent/" + Version}},
+			Subprotocols:    []string{agentapi.RelaySubprotocol},
+			CompressionMode: websocket.CompressionDisabled,
+		})
+		dcancel()
+		if err == nil {
+			ws = c
+			break
+		}
+		// 401 means the ticket was consumed or expired: retrying cannot help.
+		if (resp != nil && resp.StatusCode == http.StatusUnauthorized) || time.Now().Add(3*time.Second).After(deadline) {
+			log.Error("join relay failed", "err", err, "attempts", attempt)
+			return
+		}
+		log.Warn("join relay failed; retrying", "err", err, "attempt", attempt)
+		if !sleep(ctx, 2*time.Second) {
+			return
+		}
 	}
 	ws.SetReadLimit(4 << 20)
 	defer ws.CloseNow()

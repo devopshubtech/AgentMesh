@@ -164,6 +164,7 @@ private fun VpnBanner(vpn: VpnStatus, exitIp: String?, onCheckIp: () -> Unit, on
     val (title, detail) = when (vpn) {
         VpnStatus.Idle -> return
         is VpnStatus.Connecting -> "Connecting via ${vpn.deviceName}…" to null
+        is VpnStatus.Reconnecting -> "Reconnecting to ${vpn.deviceName} (attempt ${vpn.attempt})…" to vpn.reason
         is VpnStatus.Connected -> "Internet via ${vpn.deviceName}" to
             "↑ ${ExitVpnService.human(vpn.bytesUp)}  ↓ ${ExitVpnService.human(vpn.bytesDown)}  ·  ${vpn.flows} flows" +
             (if (vpn.failedFlows > 0) " (${vpn.failedFlows} refused)" else "") +
@@ -177,7 +178,7 @@ private fun VpnBanner(vpn: VpnStatus, exitIp: String?, onCheckIp: () -> Unit, on
         Column(Modifier.padding(12.dp)) {
             Text(title, fontWeight = FontWeight.SemiBold)
             detail?.let { Text(it, fontSize = 13.sp) }
-            if (vpn is VpnStatus.Connected || vpn is VpnStatus.Connecting) {
+            if (vpn is VpnStatus.Connected || vpn is VpnStatus.Connecting || vpn is VpnStatus.Reconnecting) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                     if (vpn is VpnStatus.Connected) OutlinedButton(onClick = onCheckIp) { Text("Check my IP") }
                     Button(onClick = onStop) { Text("Disconnect") }
@@ -360,7 +361,7 @@ private fun DeviceScreen(d: Device, st: UiState, vm: AppViewModel, vpn: VpnStatu
                             "This device does not allow exit-node sessions. Enable it on the device with " +
                                 "\"allow_exit_node\": true in the agent's local policy.", fontSize = 13.sp)
                         !d.online -> Text("The device must be online.", fontSize = 13.sp)
-                        vpn is VpnStatus.Connected || vpn is VpnStatus.Connecting ->
+                        vpn is VpnStatus.Connected || vpn is VpnStatus.Connecting || vpn is VpnStatus.Reconnecting ->
                             Text("Your phone's internet traffic is routed through a device. See the banner above.", fontSize = 13.sp)
                         else -> {
                             Text("Route this phone's internet traffic through ${d.name}. Websites will see its IP address.", fontSize = 13.sp)

@@ -17,6 +17,10 @@ export const qk = {
     byDevice: (deviceId: string) => ['commands', 'device', deviceId] as const,
     detail: (id: string) => ['commands', 'detail', id] as const,
   },
+  sessions: {
+    all: ['exit-sessions'] as const,
+    byDevice: (deviceId: string) => ['exit-sessions', 'device', deviceId] as const,
+  },
   enrollment: {
     all: ['enrollment-tokens'] as const,
   },

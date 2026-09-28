@@ -11,12 +11,14 @@ import android.net.IpPrefix
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import io.agentmesh.control.App
 import io.agentmesh.control.MainActivity
 import io.agentmesh.tunnel.Engine
 import io.agentmesh.tunnel.Tunnel
 import java.net.InetAddress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -29,6 +31,7 @@ import kotlinx.coroutines.launch
 sealed interface VpnStatus {
     data object Idle : VpnStatus
     data class Connecting(val deviceName: String) : VpnStatus
+    data class Reconnecting(val deviceName: String, val attempt: Int, val reason: String) : VpnStatus
     data class Connected(
         val deviceName: String,
         val sessionId: String,
@@ -44,36 +47,53 @@ sealed interface VpnStatus {
 /**
  * Routes this phone's traffic through an AgentMesh exit-node device.
  *
- * All IPv4/IPv6 traffic is captured (private LAN ranges are left on the local
+ * All IPv4/IPv6 traffic is captured (private LAN ranges stay on the local
  * network on Android 13+), terminated by the Go engine and carried over the
  * relay to the agent. This app itself is excluded from the VPN so it can keep
  * talking to the control plane directly.
+ *
+ * If the tunnel drops (network change, phone stalled the app, server
+ * restart) the service requests a fresh session and reconnects on its own.
  */
 class ExitVpnService : VpnService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var engine: Engine? = null
+    @Volatile private var userStopped = false
+    private var monitor: Job? = null
+    private var deviceId = ""
+    private var deviceName = ""
+    private var caPem = ""
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_CONNECT -> {
+                userStopped = false
+                deviceId = intent.getStringExtra(EXTRA_DEVICE_ID).orEmpty()
+                deviceName = intent.getStringExtra(EXTRA_DEVICE_NAME).orEmpty()
+                caPem = intent.getStringExtra(EXTRA_CA_PEM).orEmpty()
                 val relay = intent.getStringExtra(EXTRA_RELAY_URL).orEmpty()
                 val ticket = intent.getStringExtra(EXTRA_TICKET).orEmpty()
-                val ca = intent.getStringExtra(EXTRA_CA_PEM).orEmpty()
                 val session = intent.getStringExtra(EXTRA_SESSION_ID).orEmpty()
-                val device = intent.getStringExtra(EXTRA_DEVICE_NAME).orEmpty()
-                goForeground("Connecting via $device…")
-                _status.value = VpnStatus.Connecting(device)
-                scope.launch { connect(relay, ticket, ca, session, device) }
+                goForeground("Connecting via $deviceName…")
+                _status.value = VpnStatus.Connecting(deviceName)
+                scope.launch {
+                    val err = connect(relay, ticket, session)
+                    if (err != null) reconnect(err)
+                }
             }
-            ACTION_DISCONNECT -> shutdown(null)
+            ACTION_DISCONNECT -> {
+                userStopped = true
+                shutdown(null)
+            }
         }
         return START_NOT_STICKY
     }
 
-    private fun connect(relay: String, ticket: String, ca: String, session: String, device: String) {
+    /** Establishes the VPN interface and starts the engine. Returns an error or null. */
+    private fun connect(relay: String, ticket: String, session: String): String? {
         engine?.stop()
         val builder = Builder()
-            .setSession("AgentMesh via $device")
+            .setSession("AgentMesh via $deviceName")
             .setMtu(MTU)
             .addAddress("10.111.0.2", 24)
             .addRoute("0.0.0.0", 0)
@@ -83,40 +103,64 @@ class ExitVpnService : VpnService() {
             .addDnsServer("1.0.0.1")
             .addDisallowedApplication(packageName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Keep the local network (printers, the AgentMesh server on the LAN, ...) direct.
+            // Keep the local network (printers, a LAN AgentMesh server, ...) direct.
             for ((net, len) in LOCAL_RANGES) builder.excludeRoute(IpPrefix(InetAddress.getByName(net), len))
         }
         val pfd: ParcelFileDescriptor = try {
-            builder.establish() ?: return shutdown("VPN permission was not granted")
+            builder.establish() ?: return "VPN permission was not granted"
         } catch (e: Exception) {
-            return shutdown("Could not create VPN interface: ${e.message}")
+            return "Could not create VPN interface: ${e.message}"
         }
         val fd = pfd.detachFd() // ownership moves to the Go engine
         val eng = Tunnel.newEngine()
         try {
-            eng.start(fd.toLong(), relay, ticket, ca, MTU.toLong())
+            eng.start(fd.toLong(), relay, ticket, caPem, MTU.toLong())
         } catch (e: Exception) {
             runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
-            return shutdown("Tunnel failed: ${e.message}")
+            return "Tunnel failed: ${e.message}"
         }
         engine = eng
         currentEngine = eng
         val since = System.currentTimeMillis()
-        scope.launch {
+        monitor?.cancel()
+        monitor = scope.launch {
             while (isActive) {
-                val e = engine ?: break
-                if (!e.isRunning) {
-                    shutdown(e.lastError().ifBlank { "Tunnel closed" })
+                if (engine !== eng) break
+                if (!eng.isRunning) {
+                    if (!userStopped) reconnect(eng.lastError().ifBlank { "Tunnel closed" })
                     break
                 }
-                _status.value = VpnStatus.Connected(device, session, since, e.bytesUp(), e.bytesDown(), e.flows(), e.failedFlows())
-                notify("Via $device · ↑ ${human(e.bytesUp())} ↓ ${human(e.bytesDown())}")
+                _status.value = VpnStatus.Connected(deviceName, session, since, eng.bytesUp(), eng.bytesDown(), eng.flows(), eng.failedFlows())
+                notify("Via $deviceName · ↑ ${human(eng.bytesUp())} ↓ ${human(eng.bytesDown())}")
                 delay(2000)
             }
         }
+        return null
+    }
+
+    /** Requests a new session from the control plane and reconnects, with backoff. */
+    private suspend fun reconnect(reason: String) {
+        val app = application as App
+        for ((i, wait) in RETRY_DELAYS_S.withIndex()) {
+            if (userStopped) return
+            _status.value = VpnStatus.Reconnecting(deviceName, i + 1, reason)
+            notify("Reconnecting to $deviceName (attempt ${i + 1})…")
+            delay(wait * 1000L)
+            if (userStopped) return
+            try {
+                val s = app.api.createExitSession(deviceId, "Android ${Build.MANUFACTURER} ${Build.MODEL}")
+                val relay = if (app.store.relayViaServer) app.api.serverUrl + "/v1/relay" else s.relayUrl
+                val err = connect(relay, s.ticket, s.session.id) ?: return
+                android.util.Log.w("AgentMesh", "reconnect attempt ${i + 1} failed: $err")
+            } catch (e: Exception) {
+                android.util.Log.w("AgentMesh", "reconnect attempt ${i + 1} failed: ${e.message}")
+            }
+        }
+        shutdown("Lost connection to $deviceName: $reason")
     }
 
     private fun shutdown(error: String?) {
+        monitor?.cancel()
         engine?.stop()
         engine = null
         currentEngine = null
@@ -125,7 +169,10 @@ class ExitVpnService : VpnService() {
         stopSelf()
     }
 
-    override fun onRevoke() = shutdown("VPN was turned off by the system or another VPN app")
+    override fun onRevoke() {
+        userStopped = true
+        shutdown("VPN was turned off by the system or another VPN app")
+    }
 
     override fun onDestroy() {
         engine?.stop()
@@ -172,10 +219,12 @@ class ExitVpnService : VpnService() {
         const val EXTRA_TICKET = "ticket"
         const val EXTRA_CA_PEM = "ca_pem"
         const val EXTRA_SESSION_ID = "session_id"
+        const val EXTRA_DEVICE_ID = "device_id"
         const val EXTRA_DEVICE_NAME = "device_name"
         private const val CHANNEL = "exit_tunnel"
         private const val NOTIFICATION_ID = 7
         private const val MTU = 1500
+        private val RETRY_DELAYS_S = listOf(1L, 3L, 5L, 10L, 20L, 30L)
         private val LOCAL_RANGES = listOf(
             "10.0.0.0" to 8, "172.16.0.0" to 12, "192.168.0.0" to 16, "169.254.0.0" to 16, "100.64.0.0" to 10,
         )
@@ -187,10 +236,12 @@ class ExitVpnService : VpnService() {
         @Volatile var currentEngine: Engine? = null
             private set
 
-        fun connect(ctx: Context, relayUrl: String, ticket: String, caPem: String, sessionId: String, deviceName: String) {
+        fun connect(
+            ctx: Context, relayUrl: String, ticket: String, caPem: String, sessionId: String, deviceId: String, deviceName: String,
+        ) {
             val i = Intent(ctx, ExitVpnService::class.java).setAction(ACTION_CONNECT)
                 .putExtra(EXTRA_RELAY_URL, relayUrl).putExtra(EXTRA_TICKET, ticket).putExtra(EXTRA_CA_PEM, caPem)
-                .putExtra(EXTRA_SESSION_ID, sessionId).putExtra(EXTRA_DEVICE_NAME, deviceName)
+                .putExtra(EXTRA_SESSION_ID, sessionId).putExtra(EXTRA_DEVICE_ID, deviceId).putExtra(EXTRA_DEVICE_NAME, deviceName)
             ctx.startForegroundService(i)
         }
 

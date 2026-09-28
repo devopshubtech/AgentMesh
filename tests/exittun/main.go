@@ -18,6 +18,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -84,6 +86,7 @@ func main() {
 	caFile := flag.String("ca", "", "CA PEM for the gateway")
 	lanProbe := flag.String("lan-probe", "192.168.30.1", "private address that the agent must refuse")
 	dnsServer := flag.String("dns", "1.1.1.1", "public DNS server to query through the tunnel (must be routed into the TUN)")
+	hold := flag.Duration("hold", 0, "keep the session connected this long after the checks (for UI demos)")
 	flag.Parse()
 	if *caFile != "" {
 		pem, err := os.ReadFile(*caFile)
@@ -104,7 +107,7 @@ func main() {
 		RelayURL string `json:"relay_url"`
 		Ticket   string `json:"ticket"`
 	}
-	must(post(*api+"/v1/devices/"+*device+"/exit-sessions", login.AccessToken, map[string]string{"client_label": "exittun-harness"}, &sess), "create exit session")
+	must(post(*api+"/v1/devices/"+*device+"/exit-sessions", login.AccessToken, map[string]string{"client_label": "Android Samsung SM-S918B (test)"}, &sess), "create exit session")
 	if *relay != "" {
 		sess.RelayURL = *relay
 	}
@@ -155,6 +158,28 @@ func main() {
 	check("counters", eng.BytesDown() > 0 && eng.Flows() >= 2,
 		fmt.Sprintf("flows=%d up=%dB down=%dB", eng.Flows(), eng.BytesUp(), eng.BytesDown()))
 
+	if *hold > 0 {
+		fmt.Println("holding session with background load for", *hold)
+		stop := time.Now().Add(*hold)
+		var okN, errN atomic.Int64
+		var wg sync.WaitGroup
+		for w := 0; w < 20; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for time.Now().Before(stop) {
+					if _, err := sh("curl", "-s", "--max-time", "10", "-o", "/dev/null", "https://1.1.1.1/cdn-cgi/trace"); err != nil {
+						errN.Add(1)
+					} else {
+						okN.Add(1)
+					}
+					time.Sleep(200 * time.Millisecond)
+				}
+			}()
+		}
+		wg.Wait()
+		check("sustained load through relay", eng.IsRunning() && errN.Load() == 0, fmt.Sprintf("requests ok=%d failed=%d engine_running=%v last_error=%q", okN.Load(), errN.Load(), eng.IsRunning(), eng.LastError()))
+	}
 	eng.Stop()
 	time.Sleep(time.Second)
 	check("engine stopped", !eng.IsRunning(), "last_error="+eng.LastError())

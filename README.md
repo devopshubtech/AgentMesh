@@ -4,10 +4,10 @@
 > | App | Direct link |
 > |---|---|
 > | 📱 **Android app (APK)** | **[Download agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk)** |
-> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.3.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_darwin_arm64.tar.gz)** |
-> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.3.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_darwin_amd64.tar.gz)** |
-> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.3.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_windows_amd64.zip)** |
-> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.3.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_amd64.deb)** |
+> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.4.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_arm64.tar.gz)** |
+> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.4.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_amd64.tar.gz)** |
+> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.4.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_amd64.zip)** |
+> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.4.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_amd64.deb)** |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
@@ -42,19 +42,19 @@ Phases 2 to 4 (macOS, artifacts and updates, metrics, mobile, remote sessions) a
 
 Every file is attached to this repo's **[Releases](https://github.com/devopshubtech/AgentMesh/releases/latest)**, along with a `SHA256SUMS` file.
 
-| Platform | Download (v0.3.0) |
+| Platform | Download (v0.4.0) |
 |---|---|
 | **Android app** (control + exit node) | [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
-| Windows x64 | [agentmesh-agent_0.3.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_windows_amd64.zip) |
-| Windows ARM64 | [agentmesh-agent_0.3.0_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_windows_arm64.zip) |
-| macOS Apple Silicon | [agentmesh-agent_0.3.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_darwin_arm64.tar.gz) |
-| macOS Intel | [agentmesh-agent_0.3.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_darwin_amd64.tar.gz) |
-| Debian / Ubuntu x64 | [agentmesh-agent_0.3.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_amd64.deb) |
-| Debian / Ubuntu ARM64 | [agentmesh-agent_0.3.0_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_arm64.deb) |
-| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.3.0_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_armhf.deb) |
-| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.3.0-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent-0.3.0-1.x86_64.rpm) |
-| RHEL / Fedora ARM64 | [agentmesh-agent-0.3.0-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent-0.3.0-1.aarch64.rpm) |
-| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.3.0/agentmesh-agent_0.3.0_linux_armv7.tar.gz) |
+| Windows x64 | [agentmesh-agent_0.4.0_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_amd64.zip) |
+| Windows ARM64 | [agentmesh-agent_0.4.0_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_windows_arm64.zip) |
+| macOS Apple Silicon | [agentmesh-agent_0.4.0_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_arm64.tar.gz) |
+| macOS Intel | [agentmesh-agent_0.4.0_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_darwin_amd64.tar.gz) |
+| Debian / Ubuntu x64 | [agentmesh-agent_0.4.0_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_amd64.deb) |
+| Debian / Ubuntu ARM64 | [agentmesh-agent_0.4.0_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_arm64.deb) |
+| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.4.0_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_armhf.deb) |
+| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.4.0-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent-0.4.0-1.x86_64.rpm) |
+| RHEL / Fedora ARM64 | [agentmesh-agent-0.4.0-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent-0.4.0-1.aarch64.rpm) |
+| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.4.0/agentmesh-agent_0.4.0_linux_armv7.tar.gz) |
 
 **One-line install.** These always pull the latest release and check the SHA-256 before installing. Get `<gateway>` and the token from the dashboard's **Enrollment** page. Add `--ca-file ca.pem` when the server uses a private or development CA, and `--enable-exit-node` to let this device act as an exit node.
 

@@ -236,7 +236,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Relaying via the URL this app already reaches works from any network
         // (Wi-Fi or mobile data); the advertised gateway address may be LAN-only.
         val relay = if (store.relayViaServer) api.serverUrl + "/v1/relay" else s.relayUrl
-        ExitVpnService.connect(getApplication(), relay, s.ticket, api.caPem, s.session.id, d.name)
+        ExitVpnService.connect(getApplication(), relay, s.ticket, api.caPem, s.session.id, d.id, d.name)
         _state.update { it.copy(exitIp = null) }
     }
 

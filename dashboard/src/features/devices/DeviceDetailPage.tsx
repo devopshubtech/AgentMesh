@@ -25,13 +25,15 @@ import { toast } from '@/components/ui/toast-store';
 import { CommandsTab } from '@/features/commands/CommandsTab';
 import { DeviceOverview } from './DeviceOverview';
 import { ActivityTab } from './ActivityTab';
+import { ConnectedClientsBanner, ConnectedClientsTab } from './ConnectedClients';
 
-type TabValue = 'commands' | 'activity' | 'metrics' | 'logs' | 'packages' | 'artifacts' | 'access';
+type TabValue = 'commands' | 'phones' | 'activity' | 'metrics' | 'logs' | 'packages' | 'artifacts' | 'access';
 
 const PHASE2 = 'Coming in Phase 2+';
 
 const TABS: TabDef<TabValue>[] = [
   { value: 'commands', label: 'Commands' },
+  { value: 'phones', label: 'Connected phones' },
   { value: 'activity', label: 'Activity' },
   ...(['metrics', 'logs', 'packages', 'artifacts', 'access'] as const).map((v) => ({
     value: v,
@@ -254,6 +256,8 @@ export function DeviceDetailPage() {
         </div>
       )}
 
+      <ConnectedClientsBanner deviceId={d.id} />
+
       <DeviceOverview device={d} />
 
       <Card className="mt-6 px-4 pb-4">
@@ -261,6 +265,11 @@ export function DeviceDetailPage() {
         {tab === 'commands' && (
           <TabPanel idPrefix="device" value="commands">
             <CommandsTab device={d} />
+          </TabPanel>
+        )}
+        {tab === 'phones' && (
+          <TabPanel idPrefix="device" value="phones">
+            <ConnectedClientsTab deviceId={d.id} />
           </TabPanel>
         )}
         {tab === 'activity' && (
