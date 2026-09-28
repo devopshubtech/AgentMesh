@@ -31,6 +31,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -109,7 +110,7 @@ fun AgentMeshApp(vm: AppViewModel, onUseExitNode: (Device) -> Unit) {
                         Text(
                             when (val s = st.screen) {
                                 is Screen.DeviceDetail -> st.device?.name ?: "Device"
-                                Screen.Setup -> "Connect to server"
+                                Screen.Setup -> "Servers"
                                 Screen.Login -> "Sign in"
                                 else -> "AgentMesh"
                             }
@@ -118,6 +119,9 @@ fun AgentMeshApp(vm: AppViewModel, onUseExitNode: (Device) -> Unit) {
                     navigationIcon = {
                         if (st.screen is Screen.DeviceDetail) {
                             IconButton(onClick = vm::back) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+                        }
+                        if (st.screen is Screen.Setup && vm.savedServer.isNotBlank()) {
+                            IconButton(onClick = { vm.selectServer(vm.savedServer) }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
                         }
                     },
                     actions = {
@@ -136,9 +140,15 @@ fun AgentMeshApp(vm: AppViewModel, onUseExitNode: (Device) -> Unit) {
                 VpnBanner(vpn, st.exitIp, onCheckIp = vm::checkExitIp, onStop = vm::stopExit)
                 when (val s = st.screen) {
                     Screen.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator() }
-                    Screen.Setup -> SetupScreen(vm)
+                    Screen.Setup -> {
+                        BackHandler(enabled = vm.savedServer.isNotBlank()) { vm.selectServer(vm.savedServer) }
+                        SetupScreen(vm)
+                    }
                     Screen.Login -> LoginScreen(vm)
-                    Screen.Devices -> DevicesScreen(st.devices, st.user?.email.orEmpty(), vm::openDevice, vm::logout)
+                    Screen.Devices -> {
+                        ServerBar(vm.savedServer, onSwitch = vm::openSetup)
+                        DevicesScreen(st.devices, st.user?.email.orEmpty(), vm::openDevice, vm::logout)
+                    }
                     is Screen.DeviceDetail -> {
                         BackHandler(onBack = vm::back)
                         st.device?.let { DeviceScreen(it, st, vm, vpn, onUseExitNode) }
@@ -180,9 +190,30 @@ private fun VpnBanner(vpn: VpnStatus, exitIp: String?, onCheckIp: () -> Unit, on
 @Composable
 private fun SetupScreen(vm: AppViewModel) {
     val st by vm.state.collectAsState()
-    var url by rememberSaveable { mutableStateOf(vm.savedServer.ifBlank { "https://" }) }
+    var url by rememberSaveable { mutableStateOf("https://") }
+    var relayViaServer by remember { mutableStateOf(vm.relayViaServer) }
     Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Enter the address of your AgentMesh server, for example https://192.168.1.20:13443 or https://mesh.example.com.")
+        if (vm.servers.isNotEmpty()) {
+            Text("Saved servers", fontWeight = FontWeight.SemiBold)
+            vm.servers.forEach { s ->
+                Card(Modifier.fillMaxWidth()) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(s, fontSize = 14.sp)
+                            if (s == vm.savedServer) Text("current", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                        if (s != vm.savedServer) TextButton(onClick = { vm.selectServer(s) }) { Text("Use") }
+                        TextButton(onClick = { vm.removeServer(s) }) { Text("Remove") }
+                    }
+                }
+            }
+            HorizontalDivider()
+        }
+        Text("Add a server", fontWeight = FontWeight.SemiBold)
+        Text(
+            "Use the public address to connect from mobile data or any network (for example " +
+                "https://your-name.trycloudflare.com or https://mesh.example.com), or the LAN address " +
+                "(https://192.168.x.x:13443) on the same Wi-Fi.", fontSize = 13.sp)
         OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri), modifier = Modifier.fillMaxWidth())
         Button(onClick = { vm.saveServer(url, trustCandidate = false) }, modifier = Modifier.fillMaxWidth()) {
@@ -191,7 +222,12 @@ private fun SetupScreen(vm: AppViewModel) {
         OutlinedButton(onClick = { vm.fetchCa(url) }, modifier = Modifier.fillMaxWidth()) {
             Text("Private / development server: trust its CA…")
         }
-        if (vm.hasCustomCa) TextButton(onClick = vm::clearCa) { Text("Remove saved custom CA") }
+        if (vm.hasCustomCa) TextButton(onClick = vm::clearCa) { Text("Remove custom CA of the current server") }
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = relayViaServer, onCheckedChange = { relayViaServer = it; vm.relayViaServer = it })
+            Text("Send exit-node traffic through the server URL (works on mobile data). Recommended.", fontSize = 13.sp)
+        }
     }
     st.caCandidate?.let { c ->
         AlertDialog(
@@ -214,11 +250,24 @@ private fun SetupScreen(vm: AppViewModel) {
 }
 
 @Composable
+private fun ServerBar(server: String, onSwitch: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Server", fontSize = 11.sp, color = Muted)
+                Text(server, fontSize = 13.sp)
+            }
+            TextButton(onClick = onSwitch) { Text("Switch server") }
+        }
+    }
+}
+
+@Composable
 private fun LoginScreen(vm: AppViewModel) {
     var email by rememberSaveable { mutableStateOf(vm.savedEmail) }
     var password by remember { mutableStateOf("") }
     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(vm.savedServer, color = Muted, fontSize = 13.sp)
+        ServerBar(vm.savedServer, onSwitch = vm::openSetup)
         OutlinedTextField(email, { email = it }, label = { Text("Email") }, singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), modifier = Modifier.fillMaxWidth())
         OutlinedTextField(password, { password = it }, label = { Text("Password") }, singleLine = true,

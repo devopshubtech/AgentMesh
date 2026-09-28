@@ -55,6 +55,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val savedServer get() = store.serverUrl
     val savedEmail get() = store.email
     val hasCustomCa get() = store.caPem.isNotBlank()
+    val servers get() = store.servers
+    var relayViaServer: Boolean
+        get() = store.relayViaServer
+        set(v) { store.relayViaServer = v }
+
+    /** Switches to a saved server, reusing its stored session when still valid. */
+    fun selectServer(url: String) = launchBusy {
+        ExitVpnService.disconnect(getApplication())
+        store.serverUrl = url
+        api.reconfigure()
+        _state.update { UiState(screen = Screen.Loading) }
+        val user = runCatching { api.restore() }.getOrNull()
+        if (user == null) go(Screen.Login) else {
+            _state.update { it.copy(user = user) }
+            go(Screen.Devices)
+        }
+    }
+
+    fun removeServer(url: String) {
+        store.removeServer(url)
+        if (store.serverUrl.isBlank()) go(Screen.Setup) else api.reconfigure()
+        _state.update { it.copy(message = "Removed $url") }
+    }
 
     init {
         viewModelScope.launch {
@@ -126,11 +149,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun saveServer(url: String, trustCandidate: Boolean) {
         val u = normalize(url) ?: return toast("Server URL must start with https://")
-        store.serverUrl = u
-        if (trustCandidate) _state.value.caCandidate?.let { store.caPem = it.pem }
+        val candidate = _state.value.caCandidate
         _state.update { it.copy(caCandidate = null) }
-        api.reconfigure()
-        go(Screen.Login)
+        store.serverUrl = u
+        if (trustCandidate && candidate != null) store.caPem = candidate.pem
+        selectServer(u)
     }
 
     fun clearCa() {
@@ -210,7 +233,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun startExit(d: Device) = launchBusy {
         val label = "Android ${Build.MANUFACTURER} ${Build.MODEL}"
         val s = api.createExitSession(d.id, label)
-        ExitVpnService.connect(getApplication(), s.relayUrl, s.ticket, api.caPem, s.session.id, d.name)
+        // Relaying via the URL this app already reaches works from any network
+        // (Wi-Fi or mobile data); the advertised gateway address may be LAN-only.
+        val relay = if (store.relayViaServer) api.serverUrl + "/v1/relay" else s.relayUrl
+        ExitVpnService.connect(getApplication(), relay, s.ticket, api.caPem, s.session.id, d.name)
         _state.update { it.copy(exitIp = null) }
     }
 

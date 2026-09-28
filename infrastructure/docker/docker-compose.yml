@@ -125,6 +125,20 @@ services:
     depends_on:
       control-api: { condition: service_healthy }
 
+  # Public HTTPS URL for phones/agents outside the LAN (mobile data), via a
+  # Cloudflare quick tunnel: outbound only, no router changes, trusted cert.
+  #   docker compose --profile public up -d tunnel
+  #   docker compose logs tunnel | grep trycloudflare.com   -> the public URL
+  # The URL changes every time the tunnel restarts; use a named tunnel with
+  # your own domain (or a public server) for a permanent address.
+  tunnel:
+    profiles: [public]
+    image: cloudflare/cloudflared:2025.8.1
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--url", "https://dashboard:443", "--no-tls-verify"]
+    depends_on:
+      dashboard: { condition: service_healthy }
+
   # A containerized Linux device for demos/tests:
   #   AM_DEMO_ENROLL_TOKEN=am_enr_... docker compose --profile demo up -d demo-agent
   demo-agent:
