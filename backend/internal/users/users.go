@@ -81,7 +81,7 @@ func (s *Service) Get(ctx context.Context, q db.DBTX, orgID, id uuid.UUID) (*Use
 // List returns users ordered by id (UUIDv7 = creation order).
 func (s *Service) List(ctx context.Context, orgID uuid.UUID, after *uuid.UUID, limit int) ([]User, *uuid.UUID, error) {
 	rows, err := s.pool.Query(ctx, selectUser+`
-		WHERE u.org_id = $1 AND ($2::uuid IS NULL OR u.id > $2)
+		WHERE u.org_id = $1 AND u.status <> 'deleted' AND ($2::uuid IS NULL OR u.id > $2)
 		GROUP BY u.id ORDER BY u.id LIMIT $3`, orgID, after, limit+1)
 	if err != nil {
 		return nil, nil, err
@@ -328,6 +328,37 @@ func (s *Service) Update(ctx context.Context, actor *auth.Principal, id uuid.UUI
 		return err
 	})
 	return out, err
+}
+
+// Delete removes a user from the product (soft delete: history stays intact,
+// the account can no longer sign in and disappears from the user list).
+func (s *Service) Delete(ctx context.Context, actor *auth.Principal, id uuid.UUID, reqID, ip string) error {
+	if id == actor.UserID {
+		return httpx.Validation{"id": "you cannot delete your own account"}.Err()
+	}
+	return db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+		target, err := s.Get(ctx, tx, actor.OrgID, id)
+		if err != nil {
+			return err
+		}
+		if target.Status == "deleted" {
+			return httpx.NotFound("user")
+		}
+		if !actor.HoldsAll(target.Permissions) {
+			return httpx.Forbidden("cannot delete a user with permissions you do not hold")
+		}
+		if _, err := tx.Exec(ctx, `UPDATE users SET status = 'deleted', updated_at = now() WHERE id = $1`, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, id); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Event{
+			OrgID: actor.OrgID, RequestID: reqID, ActorType: audit.ActorUser, ActorID: &actor.UserID, ActorLabel: actor.Email,
+			ActorIP: ip, SessionID: &actor.SessionID, Action: "user.delete", TargetType: "user", TargetID: &id,
+			Details: map[string]any{"email": target.Email, "role": target.Role},
+		})
+	})
 }
 
 // EnsureBootstrapAdmin creates the first super admin when no users exist.

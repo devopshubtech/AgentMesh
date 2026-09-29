@@ -13,40 +13,71 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import io.agentmesh.control.data.Device
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanOptions
+import io.agentmesh.control.data.ConnectProfile
 import io.agentmesh.control.ui.AgentMeshApp
 import io.agentmesh.control.ui.AppViewModel
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
-    private var pendingExit: Device? = null
+    private var pending: ConnectProfile? = null
 
     private val vpnConsent = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { res ->
-        val d = pendingExit
-        pendingExit = null
-        if (res.resultCode == RESULT_OK && d != null) vm.startExit(d) else vm.toast("VPN permission is required to use an exit node")
+        val p = pending
+        pending = null
+        if (res.resultCode == RESULT_OK && p != null) vm.connect(p) else vm.toast("Allow the VPN request to connect")
     }
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    private val scanner = registerForActivityResult(ScanContract()) { result ->
+        result.contents?.let { text -> vm.importLink(text)?.let(::requestConnect) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { AgentMeshApp(vm, onUseExitNode = ::requestExit) }
+        setContent { AgentMeshApp(vm, onScan = ::scan, onConnect = ::requestConnect) }
+        if (savedInstanceState == null) handleDeepLink(intent)
     }
 
-    private fun requestExit(d: Device) {
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    /** agentmesh://join?... from the connect web page (or an https link shared to the app). */
+    private fun handleDeepLink(intent: Intent?) {
+        val data = intent?.dataString ?: intent?.getStringExtra(Intent.EXTRA_TEXT) ?: return
+        vm.importLink(data)?.let(::requestConnect)
+    }
+
+    private fun scan() {
+        scanner.launch(
+            ScanOptions()
+                .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+                .setPrompt("Scan the QR code from AgentMesh → Connect a phone")
+                .setBeepEnabled(false)
+                .setOrientationLocked(false)
+        )
+    }
+
+    private fun requestConnect(p: ConnectProfile) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
         askBatteryExemptionOnce()
-        startExitWithConsent(d)
+        val consent = VpnService.prepare(this)
+        if (consent == null) vm.connect(p) else {
+            pending = p
+            vpnConsent.launch(consent)
+        }
     }
 
     /**
      * Battery savers (notably OnePlus/Oppo/Xiaomi) freeze backgrounded apps even
-     * while their VPN is active, which drops the tunnel after ~1 minute. Ask
-     * once to exempt this app.
+     * while their VPN is active. Ask once to exempt this app.
      */
     private fun askBatteryExemptionOnce() {
         val pm = getSystemService(PowerManager::class.java)
@@ -55,14 +86,6 @@ class MainActivity : ComponentActivity() {
         prefs.edit().putBoolean("asked_battery", true).apply()
         runCatching {
             startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-        }
-    }
-
-    private fun startExitWithConsent(d: Device) {
-        val consent = VpnService.prepare(this)
-        if (consent == null) vm.startExit(d) else {
-            pendingExit = d
-            vpnConsent.launch(consent)
         }
     }
 }

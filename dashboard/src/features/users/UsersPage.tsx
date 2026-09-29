@@ -1,14 +1,14 @@
 import { useMemo, useState, type FormEvent } from 'react';
-import { Pencil, Plus, Users as UsersIcon } from 'lucide-react';
+import { Pencil, Plus, Trash2, Users as UsersIcon } from 'lucide-react';
 import { isApiError } from '@/api/client';
-import { useCreateUser, useRoles, useUpdateUser, useUsers } from '@/api/users';
+import { useCreateUser, useDeleteUser, useRoles, useUpdateUser, useUsers } from '@/api/users';
 import type { Role, UpdateUserRequest, User, UserStatus } from '@/api/types';
 import { useAuth } from '@/auth/context';
 import { PageHeader } from '@/components/page-header';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Dialog } from '@/components/ui/dialog';
+import { ConfirmDialog, Dialog } from '@/components/ui/dialog';
 import { EmptyState, ErrorState, LoadMore, Spinner } from '@/components/ui/feedback';
 import { Checkbox, Field, Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -30,9 +30,11 @@ function roleOptions(roles: Role[] | undefined) {
   }));
 }
 
-/** Roles whose permissions are a subset of mine (the API refuses anything else). */
+/** Only administrator accounts are used; the API also refuses roles beyond my own permissions. */
+const OFFERED_ROLES = ['super_admin', 'admin'];
+
 function grantableRoles(roles: Role[] | undefined, mine: string[]): Role[] | undefined {
-  return roles?.filter((r) => r.permissions.every((p) => mine.includes(p)));
+  return roles?.filter((r) => OFFERED_ROLES.includes(r.name) && r.permissions.every((p) => mine.includes(p)));
 }
 
 function fieldErrorsOf(err: unknown): Record<string, string> | undefined {
@@ -281,6 +283,8 @@ export function UsersPage() {
   const users = useUsers();
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
+  const [deleting, setDeleting] = useState<User | null>(null);
+  const del = useDeleteUser();
   const items = useMemo(() => users.data?.pages.flatMap((p) => p.items) ?? [], [users.data]);
 
   return (
@@ -362,6 +366,16 @@ export function UsersPage() {
                     >
                       Edit
                     </Button>
+                    {u.id !== me?.id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={<Trash2 className="size-3.5" />}
+                        onClick={() => setDeleting(u)}
+                      >
+                        Delete
+                      </Button>
+                    )}
                   </TD>
                 </TR>
               ))
@@ -376,6 +390,25 @@ export function UsersPage() {
       </Card>
       <CreateUserDialog open={createOpen} onClose={() => setCreateOpen(false)} />
       {editing && <EditUserDialog key={editing.id} user={editing} onClose={() => setEditing(null)} />}
+      {deleting && (
+        <ConfirmDialog
+          open
+          destructive
+          title={`Delete ${deleting.email}?`}
+          description="The account can no longer sign in and is removed from this list. Its past activity stays in the audit log."
+          confirmLabel="Delete user"
+          loading={del.isPending}
+          onClose={() => !del.isPending && setDeleting(null)}
+          onConfirm={() =>
+            del.mutate(deleting.id, {
+              onSuccess: () => {
+                toast.success('User deleted', deleting.email);
+                setDeleting(null);
+              },
+            })
+          }
+        />
+      )}
     </>
   );
 }

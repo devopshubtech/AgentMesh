@@ -27,6 +27,7 @@ type API struct {
 	UserTokenKey      string        `env:"AGENTMESH_USER_TOKEN_KEY,required"`      // base64 Ed25519 seed
 	CommandSigningKey string        `env:"AGENTMESH_COMMAND_SIGNING_KEY,required"` // base64 Ed25519 seed
 	PublicGatewayURL  string        `env:"AGENTMESH_PUBLIC_GATEWAY_URL,required"`  // shown in install snippets
+	RendezvousURL     string        `env:"AGENTMESH_RENDEZVOUS_URL"`               // optional: returns the current public URL
 	AccessTokenTTL    time.Duration `env:"AGENTMESH_ACCESS_TOKEN_TTL" envDefault:"10m"`
 	CookieSecure      bool          `env:"AGENTMESH_COOKIE_SECURE" envDefault:"true"`
 	TrustProxyHeaders bool          `env:"AGENTMESH_TRUST_PROXY_HEADERS" envDefault:"false"`

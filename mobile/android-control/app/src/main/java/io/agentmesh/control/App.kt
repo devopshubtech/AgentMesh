@@ -1,18 +1,18 @@
 package io.agentmesh.control
 
 import android.app.Application
-import io.agentmesh.control.data.Api
-import io.agentmesh.control.data.SecureStore
+import io.agentmesh.control.data.ConnectApi
+import io.agentmesh.control.data.ProfileStore
 
 class App : Application() {
-    lateinit var store: SecureStore
+    lateinit var profiles: ProfileStore
         private set
-    lateinit var api: Api
+    lateinit var connect: ConnectApi
         private set
 
     override fun onCreate() {
         super.onCreate()
-        store = SecureStore(this)
-        api = Api(store)
+        profiles = ProfileStore(this)
+        connect = ConnectApi(profiles)
     }
 }

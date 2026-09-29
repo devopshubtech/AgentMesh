@@ -342,6 +342,8 @@ export interface ExitSession {
   end_reason: string | null;
   bytes_up: number;
   bytes_down: number;
+  /** Set when the phone connected with a connect link (QR code). */
+  connect_key_label?: string | null;
 }
 
 export interface SessionUpdatedEvent {

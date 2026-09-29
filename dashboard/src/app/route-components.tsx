@@ -5,6 +5,7 @@ import { EmptyState } from '@/components/ui/feedback';
 /** Sends the user to the first section they are allowed to see. */
 export function HomeRedirect() {
   const can = usePermissions();
+  if (can('sessions.exit_node')) return <Navigate to="/connect" replace />;
   if (can('devices.read')) return <Navigate to="/devices" replace />;
   if (can('enrollment.manage')) return <Navigate to="/enrollment" replace />;
   if (can('audit.read')) return <Navigate to="/audit" replace />;

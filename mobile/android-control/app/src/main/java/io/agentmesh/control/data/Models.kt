@@ -1,124 +1,72 @@
 package io.agentmesh.control.data
 
-import kotlinx.serialization.SerialName
+import android.net.Uri
 import kotlinx.serialization.Serializable
 
-// Mirrors docs/api.md (snake_case JSON).
-
+/**
+ * A saved remote server: the AgentMesh address plus the connect key from a
+ * QR code / link. The key itself is stored encrypted (see [ProfileStore]).
+ */
 @Serializable
-data class User(
-    val id: String,
-    val email: String,
-    @SerialName("display_name") val displayName: String = "",
-    val role: String = "",
-    val permissions: List<String> = emptyList(),
-) {
-    fun can(p: String) = p in permissions
-}
-
-@Serializable
-data class TokenResponse(
-    @SerialName("access_token") val accessToken: String,
-    @SerialName("expires_in") val expiresIn: Int,
-    val user: User,
-    @SerialName("refresh_token") val refreshToken: String? = null,
-)
-
-@Serializable
-data class Cpu(val model: String = "", val cores: Int = 0, val threads: Int = 0)
-
-@Serializable
-data class Memory(@SerialName("total_bytes") val totalBytes: Long = 0, @SerialName("used_bytes") val usedBytes: Long = 0)
-
-@Serializable
-data class Disk(
-    val mount: String = "",
-    val fstype: String = "",
-    @SerialName("total_bytes") val totalBytes: Long = 0,
-    @SerialName("used_bytes") val usedBytes: Long = 0,
-)
-
-@Serializable
-data class NetIf(val name: String = "", val mac: String = "", val addrs: List<String> = emptyList())
-
-@Serializable
-data class Inventory(
-    val cpu: Cpu = Cpu(),
-    val memory: Memory = Memory(),
-    val disks: List<Disk> = emptyList(),
-    val network: List<NetIf> = emptyList(),
-    @SerialName("uptime_s") val uptimeS: Long = 0,
-)
-
-@Serializable
-data class Device(
+data class ConnectProfile(
     val id: String,
     val name: String,
-    val hostname: String = "",
-    val status: String,
-    val connectivity: String,
-    val platform: String = "",
-    val arch: String = "",
-    @SerialName("os_name") val osName: String = "",
-    @SerialName("os_version") val osVersion: String = "",
-    @SerialName("agent_version") val agentVersion: String = "",
-    val capabilities: List<String> = emptyList(),
-    val inventory: Inventory? = null,
-    @SerialName("last_seen_at") val lastSeenAt: String? = null,
-    @SerialName("last_ip") val lastIp: String? = null,
-) {
-    val online get() = connectivity == "online"
-    val exitNodeCapable get() = "exit_node" in capabilities
-}
-
-@Serializable
-data class DeviceList(val items: List<Device>, @SerialName("next_cursor") val nextCursor: String? = null)
-
-@Serializable
-data class CommandResult(
-    @SerialName("exit_code") val exitCode: Int? = null,
-    val stdout: String = "",
-    val stderr: String = "",
-    val truncated: Boolean = false,
-    val error: String? = null,
-    @SerialName("duration_ms") val durationMs: Long = 0,
+    val serverUrl: String,
+    val keyEnc: String,
+    val keyHash: String,
+    val rendezvousUrl: String = "",
+    val deviceName: String = "",
+    val lastConnectedAt: Long = 0,
 )
 
-@Serializable
-data class Command(
-    val id: String,
-    val kind: String,
-    val action: String? = null,
-    val argv: List<String>? = null,
-    val status: String,
-    val result: CommandResult? = null,
-) {
-    val finished get() = status !in setOf("queued", "sent", "acked", "running")
-}
-
-@Serializable
-data class CreateCommand(
-    val kind: String,
-    val action: String? = null,
-    val argv: List<String>? = null,
-    val shell: Boolean = false,
-    @SerialName("timeout_s") val timeoutS: Int = 60,
-)
-
-@Serializable
-data class ExitSession(val id: String, @SerialName("device_id") val deviceId: String, val status: String)
-
-@Serializable
-data class ExitSessionCreated(
-    val session: ExitSession,
-    @SerialName("relay_url") val relayUrl: String,
-    val ticket: String,
-)
-
-@Serializable
-data class ApiErrorBody(val error: ApiErrorDetail)
-
-@Serializable
-data class ApiErrorDetail(val code: String, val message: String, @SerialName("request_id") val requestId: String = "")
+/** What a connect link carries. */
+data class ConnectLink(val serverUrl: String, val key: String, val rendezvousUrl: String)
 
 class ApiException(val status: Int, val code: String, override val message: String) : Exception(message)
+
+object Links {
+    /**
+     * Accepts every form a connect link can arrive in:
+     *   https://<server>/join.html#k=<key>&r=<rendezvous>   (QR code / shared link)
+     *   agentmesh://join?u=<server>&k=<key>&r=<rendezvous>   (deep link from the join page)
+     */
+    fun parse(raw: String): ConnectLink? {
+        val s = raw.trim()
+        if (s.isEmpty()) return null
+        val uri = runCatching { Uri.parse(s) }.getOrNull() ?: return null
+        return when (uri.scheme?.lowercase()) {
+            "agentmesh" -> {
+                val u = uri.getQueryParameter("u")?.trimEnd('/') ?: return null
+                val k = uri.getQueryParameter("k") ?: return null
+                if (!u.startsWith("https://")) null else ConnectLink(u, k, uri.getQueryParameter("r").orEmpty())
+            }
+            "https" -> {
+                val params = Uri.parse("x://x?" + (uri.encodedFragment ?: ""))
+                val k = params.getQueryParameter("k") ?: return null
+                ConnectLink("https://" + uri.encodedAuthority, k, params.getQueryParameter("r").orEmpty())
+            }
+            else -> null
+        }
+    }
+
+    /**
+     * Normalizes a server address typed by hand (Edit dialog):
+     *   203.0.113.7 -> https://203.0.113.7:13443, host:port -> https://host:port, https://x/y -> https://x
+     */
+    fun normalizeServer(input: String): String? {
+        var s = input.trim().trimEnd('/')
+        if (s.startsWith("http://", ignoreCase = true)) return null
+        if (s.startsWith("https://", ignoreCase = true)) s = s.substring(8)
+        val hostPort = s.substringBefore('/')
+        if (hostPort.isBlank() || hostPort.contains(' ')) return null
+        val host = hostPort.substringBefore(':')
+        val hasPort = hostPort.contains(':')
+        val isIp = host.split('.').let { p -> p.size == 4 && p.all { it.toIntOrNull() in 0..255 } }
+        return when {
+            hasPort -> "https://$hostPort"
+            isIp -> "https://$host:13443"
+            host.contains('.') || host == "localhost" -> "https://$host"
+            else -> null
+        }
+    }
+}

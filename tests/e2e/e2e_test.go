@@ -219,7 +219,11 @@ func TestEndToEnd(t *testing.T) {
 
 	// 4. RBAC: a viewer can read but not execute.
 	viewerEmail := fmt.Sprintf("e2e-viewer-%d@agentmesh.local", time.Now().UnixNano())
-	admin.must("POST", "/v1/users", map[string]string{"email": viewerEmail, "display_name": "e2e viewer", "password": "e2e-viewer-password-1", "role": "viewer"}, nil)
+	var viewerUser struct {
+		ID string `json:"id"`
+	}
+	admin.must("POST", "/v1/users", map[string]string{"email": viewerEmail, "display_name": "e2e viewer", "password": "e2e-viewer-password-1", "role": "viewer"}, &viewerUser)
+	defer admin.do("DELETE", "/v1/users/"+viewerUser.ID, nil, nil) // keep the user list clean
 	viewer := login(t, api, viewerEmail, "e2e-viewer-password-1")
 	if code := viewer.do("GET", "/v1/devices/"+dev.ID, nil, nil); code != 200 {
 		t.Fatalf("viewer read device: %d", code)

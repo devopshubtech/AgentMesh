@@ -62,6 +62,9 @@ services:
     environment:
       <<: *backend-env
       AGENTMESH_AUTO_MIGRATE: "true"
+      # Stable URL that always returns the current public address (kept up to
+      # date by scripts/start-agentmesh.ps1), embedded in phone connect links.
+      AGENTMESH_RENDEZVOUS_URL: ${AM_RENDEZVOUS_URL:-}
       AGENTMESH_BOOTSTRAP_ADMIN_EMAIL: ${AM_ADMIN_EMAIL}
       AGENTMESH_BOOTSTRAP_ADMIN_PASSWORD: ${AM_ADMIN_PASSWORD}
       # The dashboard reaches the API through nginx on http://localhost.

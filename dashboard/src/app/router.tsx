@@ -6,6 +6,7 @@ import { DeviceDetailPage } from '@/features/devices/DeviceDetailPage';
 import { EnrollmentPage } from '@/features/enrollment/EnrollmentPage';
 import { AuditPage } from '@/features/audit/AuditPage';
 import { UsersPage } from '@/features/users/UsersPage';
+import { ConnectPage } from '@/features/connect/ConnectPage';
 import { Layout } from './Layout';
 import { HomeRedirect, NotFound, RouteError } from './route-components';
 
@@ -21,6 +22,14 @@ export const router = createBrowserRouter([
     errorElement: <RouteError />,
     children: [
       { index: true, element: <HomeRedirect /> },
+      {
+        path: 'connect',
+        element: (
+          <RequirePermission perm="sessions.exit_node">
+            <ConnectPage />
+          </RequirePermission>
+        ),
+      },
       {
         path: 'devices',
         element: (

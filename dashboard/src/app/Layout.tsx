@@ -9,6 +9,7 @@ import {
   ScrollText,
   Users as UsersIcon,
   X,
+  Smartphone,
   type LucideIcon,
 } from 'lucide-react';
 import type { Permission } from '@/api/types';
@@ -28,6 +29,7 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
+  { to: '/connect', label: 'Connect a phone', icon: Smartphone, perm: 'sessions.exit_node' },
   { to: '/devices', label: 'Devices', icon: Monitor, perm: 'devices.read' },
   { to: '/enrollment', label: 'Enrollment', icon: KeyRound, perm: 'enrollment.manage' },
   { to: '/audit', label: 'Audit log', icon: ScrollText, perm: 'audit.read' },

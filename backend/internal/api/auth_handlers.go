@@ -155,6 +155,6 @@ func (s *Server) me(w http.ResponseWriter, r *http.Request) error {
 }
 
 func (s *Server) config(w http.ResponseWriter, _ *http.Request) error {
-	httpx.WriteJSON(w, http.StatusOK, map[string]string{"gateway_url": s.GatewayURL, "version": Version})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"gateway_url": s.GatewayURL, "rendezvous_url": s.RendezvousURL, "version": Version})
 	return nil
 }

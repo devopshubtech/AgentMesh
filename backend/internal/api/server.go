@@ -45,8 +45,10 @@ type Deps struct {
 	RemoteSessions *sessions.Service
 	Hub            *events.Hub
 	GatewayURL     string
-	CookieSecure   bool
-	TrustProxy     bool
+	// RendezvousURL always returns the server's current public address (optional).
+	RendezvousURL string
+	CookieSecure  bool
+	TrustProxy    bool
 }
 
 // Server holds handler state.
@@ -56,6 +58,7 @@ type Server struct {
 	loginEmail *ratelimit.Keyed
 	refreshIP  *ratelimit.Keyed
 	commandsRL *ratelimit.Keyed
+	connectRL  *ratelimit.Keyed
 }
 
 // New builds the server.
@@ -66,6 +69,7 @@ func New(d Deps) *Server {
 		loginEmail: ratelimit.New(10, 5),
 		refreshIP:  ratelimit.New(60, 30),
 		commandsRL: ratelimit.New(60, 20),
+		connectRL:  ratelimit.New(30, 10),
 	}
 }
 
@@ -82,6 +86,8 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/auth/login", httpx.H(s.login))
 		r.Post("/auth/refresh", httpx.H(s.refresh))
 		r.Post("/auth/logout", httpx.H(s.logout))
+		// Public: the connect key (QR code / link) is the credential.
+		r.Post("/connect/session", httpx.H(s.openConnectSession))
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
@@ -101,6 +107,9 @@ func (s *Server) Handler() http.Handler {
 			r.Post("/devices/{id}/exit-sessions", httpx.H(s.createExitSession))
 			r.Get("/exit-sessions", httpx.H(s.listExitSessions))
 			r.Delete("/exit-sessions/{id}", httpx.H(s.terminateExitSession))
+			r.Get("/devices/{id}/connect-keys", httpx.H(s.listConnectKeys))
+			r.Post("/devices/{id}/connect-keys", httpx.H(s.createConnectKey))
+			r.Delete("/connect-keys/{id}", httpx.H(s.revokeConnectKey))
 
 			r.Get("/commands/{id}", httpx.H(s.getCommand))
 			r.Post("/commands/{id}/cancel", httpx.H(s.cancelCommand))
@@ -116,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/users", httpx.H(s.listUsers))
 			r.Post("/users", httpx.H(s.createUser))
 			r.Patch("/users/{id}", httpx.H(s.patchUser))
+			r.Delete("/users/{id}", httpx.H(s.deleteUser))
 		})
 	})
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) { httpx.WriteError(w, r, httpx.NotFound("route")) })

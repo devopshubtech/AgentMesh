@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
@@ -88,6 +89,8 @@ func main() {
 	lanProbe := flag.String("lan-probe", "192.168.30.1", "private address that the agent must refuse")
 	dnsServer := flag.String("dns", "1.1.1.1", "public DNS server to query through the tunnel (must be routed into the TUN)")
 	hold := flag.Duration("hold", 0, "keep the session connected this long after the checks (for UI demos)")
+	link := flag.String("link", "", "connect link (.../join.html#k=...&r=...): use the no-login connect-key flow like the Android app")
+	stale := flag.Bool("stale-server", false, "with -link: start from a dead address to exercise the rendezvous lookup")
 	bench := flag.String("bench", "", "host whose /__down endpoint is downloaded through the tunnel to measure throughput (e.g. speed.cloudflare.com)")
 	flag.Parse()
 	if *caFile != "" {
@@ -98,10 +101,6 @@ func main() {
 		apiClient = &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool}}}
 	}
 
-	var login struct {
-		AccessToken string `json:"access_token"`
-	}
-	must(post(*api+"/v1/auth/login", "", map[string]string{"email": *email, "password": *password, "client": "mobile"}, &login), "login")
 	var sess struct {
 		Session struct {
 			ID string `json:"id"`
@@ -109,7 +108,17 @@ func main() {
 		RelayURL string `json:"relay_url"`
 		Ticket   string `json:"ticket"`
 	}
-	must(post(*api+"/v1/devices/"+*device+"/exit-sessions", login.AccessToken, map[string]string{"client_label": "Android Samsung SM-S918B (test)"}, &sess), "create exit session")
+	if *link != "" {
+		server, relayURL, ticket, id := connectWithLink(*link, *stale)
+		sess.Session.ID, sess.RelayURL, sess.Ticket = id, relayURL, ticket
+		fmt.Println("connected via link to", server)
+	} else {
+		var login struct {
+			AccessToken string `json:"access_token"`
+		}
+		must(post(*api+"/v1/auth/login", "", map[string]string{"email": *email, "password": *password, "client": "mobile"}, &login), "login")
+		must(post(*api+"/v1/devices/"+*device+"/exit-sessions", login.AccessToken, map[string]string{"client_label": "Android Samsung SM-S918B (test)"}, &sess), "create exit session")
+	}
 	if *relay != "" {
 		sess.RelayURL = *relay
 	}
@@ -216,4 +225,59 @@ func firstLine(s, prefix string, nth int) string {
 		}
 	}
 	return ""
+}
+
+// connectWithLink mirrors the Android app: open a session with the link's
+// connect key; if the saved address is dead, look up the current one via the
+// rendezvous URL (GitHub gist API) and retry.
+func connectWithLink(raw string, stale bool) (server, relayURL, ticket, sessionID string) {
+	u, err := url.Parse(raw)
+	must(err, "parse link")
+	frag, _ := url.ParseQuery(u.Fragment)
+	key, rdv := frag.Get("k"), frag.Get("r")
+	server = "https://" + u.Host
+	if stale {
+		server = "https://agentmesh-stale-address-test.trycloudflare.com"
+	}
+	open := func(srv string) (map[string]any, error) {
+		req, _ := http.NewRequest("POST", srv+"/v1/connect/session", strings.NewReader(`{"client_label":"Android OnePlus (link test)"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-AgentMesh-Connect-Key", key)
+		c := &http.Client{Timeout: 20 * time.Second}
+		resp, err := c.Do(req)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		if resp.StatusCode != 201 {
+			return out, fmt.Errorf("HTTP %d %v", resp.StatusCode, out)
+		}
+		return out, nil
+	}
+	out, err := open(server)
+	if err != nil {
+		fmt.Println("saved address failed (", err, ") -> rendezvous lookup")
+		req, _ := http.NewRequest("GET", rdv, nil)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, rerr := http.DefaultClient.Do(req)
+		must(rerr, "rendezvous")
+		var g struct {
+			Files map[string]struct {
+				Content string `json:"content"`
+			} `json:"files"`
+		}
+		must(json.NewDecoder(resp.Body).Decode(&g), "decode rendezvous")
+		resp.Body.Close()
+		var doc struct {
+			URL string `json:"url"`
+		}
+		must(json.Unmarshal([]byte(g.Files["agentmesh-endpoint.json"].Content), &doc), "decode endpoint")
+		fmt.Println("rendezvous says current address is", doc.URL)
+		server = doc.URL
+		out, err = open(server)
+	}
+	must(err, "open session with connect key")
+	return server, server + "/v1/relay", out["ticket"].(string), out["session_id"].(string)
 }

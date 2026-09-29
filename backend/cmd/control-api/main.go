@@ -88,6 +88,7 @@ func run(cfg config.API, log *slog.Logger) error {
 		RemoteSessions: sessions.NewService(pool, b, devSvc, cmdKey),
 		Hub:            hub,
 		GatewayURL:     cfg.PublicGatewayURL,
+		RendezvousURL:  cfg.RendezvousURL,
 		CookieSecure:   cfg.CookieSecure,
 		TrustProxy:     cfg.TrustProxyHeaders,
 	})

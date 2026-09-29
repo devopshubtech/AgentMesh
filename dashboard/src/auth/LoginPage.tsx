@@ -36,7 +36,8 @@ export function LoginPage() {
   if (status === 'loading') return <PageLoader label="Restoring session…" />;
   if (status === 'authenticated') {
     const from = (location.state as { from?: string } | null)?.from;
-    return <Navigate to={from && from.startsWith('/') && !from.startsWith('//') ? from : '/devices'} replace />;
+    // "/" picks the home page for the user's permissions (Connect a phone for admins).
+    return <Navigate to={from && from.startsWith('/') && !from.startsWith('//') ? from : '/'} replace />;
   }
 
   const onSubmit = async (e: FormEvent) => {
