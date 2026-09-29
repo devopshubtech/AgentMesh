@@ -58,11 +58,11 @@ type Engine struct {
 	running atomic.Bool
 	lastErr atomic.Value
 
-	up, down, flows, failed, quicBlocked atomic.Int64
+	up, down, flows, failed atomic.Int64
 }
 
-// Version is the engine version string (set by the app build).
-func Version() string { return "0.5.0" }
+// Version is the engine version string.
+func Version() string { return "0.6.1" }
 
 // NewEngine returns an idle engine.
 func NewEngine() *Engine { return &Engine{} }
@@ -318,13 +318,9 @@ func (h *handler) tcp(c adapter.TCPConn) {
 
 func (h *handler) udp(c adapter.UDPConn) {
 	defer c.Close()
-	// QUIC (UDP/443) inside a reliable relay stream suffers from stacked
-	// congestion control and head-of-line blocking; refusing it makes
-	// browsers fall back to TCP immediately, which is much faster here.
-	if c.ID().LocalPort == 443 {
-		h.e.quicBlocked.Add(1)
-		return
-	}
+	// All UDP is relayed, including QUIC (UDP/443). Blocking QUIC is not
+	// safe: Chrome often uses QUIC-only for hosts it knows support HTTP/3 and
+	// then fails with ERR_QUIC_PROTOCOL_ERROR instead of falling back to TCP.
 	st, err := h.open(exitproto.NetUDP, dst(c.ID()))
 	debugf("udp flow %s open err=%v", dst(c.ID()), err)
 	if err != nil {

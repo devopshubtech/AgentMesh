@@ -91,6 +91,7 @@ func main() {
 	hold := flag.Duration("hold", 0, "keep the session connected this long after the checks (for UI demos)")
 	link := flag.String("link", "", "connect link (.../join.html#k=...&r=...): use the no-login connect-key flow like the Android app")
 	stale := flag.Bool("stale-server", false, "with -link: start from a dead address to exercise the rendezvous lookup")
+	quic := flag.String("quic", "", "host to fetch over HTTP/3 (QUIC) through the tunnel using bin/quiccheck-linux, e.g. cloudflare.com")
 	bench := flag.String("bench", "", "host whose /__down endpoint is downloaded through the tunnel to measure throughput (e.g. speed.cloudflare.com)")
 	flag.Parse()
 	if *caFile != "" {
@@ -169,6 +170,25 @@ func main() {
 	check("counters", eng.BytesDown() > 0 && eng.Flows() >= 2,
 		fmt.Sprintf("flows=%d up=%dB down=%dB", eng.Flows(), eng.BytesUp(), eng.BytesDown()))
 
+	if *quic != "" {
+		ips, _ := net.LookupHost(*quic)
+		for _, ip := range ips {
+			if strings.Contains(ip, ".") {
+				_, _ = sh("ip", "route", "add", ip+"/32", "dev", "amtun0")
+			}
+		}
+		out, err := sh("/src/bin/quiccheck-linux", "https://"+*quic+"/cdn-cgi/trace")
+		proto, ip := "", ""
+		for _, l := range strings.Split(out, "\n") {
+			if strings.HasPrefix(l, "proto=") {
+				proto = l
+			}
+			if strings.HasPrefix(l, "ip=") {
+				ip = l
+			}
+		}
+		check("HTTP/3 (QUIC, like Chrome) via exit node", err == nil && strings.Contains(proto, "HTTP/3"), proto+" "+ip+lastLine(out, err))
+	}
 	if *bench != "" {
 		ips, _ := net.LookupHost(*bench)
 		for _, ip := range ips {
@@ -280,4 +300,12 @@ func connectWithLink(raw string, stale bool) (server, relayURL, ticket, sessionI
 	}
 	must(err, "open session with connect key")
 	return server, server + "/v1/relay", out["ticket"].(string), out["session_id"].(string)
+}
+
+func lastLine(out string, err error) string {
+	if err == nil {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	return " error: " + lines[len(lines)-1]
 }

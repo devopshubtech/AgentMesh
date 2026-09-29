@@ -48,8 +48,8 @@ sealed interface VpnStatus {
 /**
  * Routes this phone's traffic through an AgentMesh exit-node device.
  *
- * All IPv4/IPv6 traffic is captured (private LAN ranges stay on the local
- * network on Android 13+), terminated by the Go engine and carried over the
+ * All IPv4 traffic is captured (private LAN ranges stay on the local network
+ * on Android 13+; IPv6 is blocked), terminated by the Go engine and carried over the
  * relay to the agent. This app itself is excluded from the VPN so it can keep
  * talking to the control plane directly.
  *
@@ -96,8 +96,10 @@ class ExitVpnService : VpnService() {
             .setMtu(MTU)
             .addAddress("10.111.0.2", 24)
             .addRoute("0.0.0.0", 0)
-            .addAddress("fd00:a6e5:6d65::2", 64)
-            .addRoute("::", 0)
+            // No IPv6 address or route on purpose: Android then BLOCKS IPv6 for
+            // the duration of the VPN (it does not leak around it), so apps fail
+            // over to IPv4 instantly. Exit devices are often IPv4-only; tunnelling
+            // IPv6 to them made dual-stack sites hang on mobile networks.
             .addDnsServer("1.1.1.1")
             .addDnsServer("1.0.0.1")
             .addDisallowedApplication(packageName)
