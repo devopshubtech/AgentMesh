@@ -7,13 +7,16 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.ConnectivityManager
 import android.net.IpPrefix
+import android.net.Network
 import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import io.agentmesh.control.App
 import io.agentmesh.control.MainActivity
 import io.agentmesh.control.data.ApiException
+import io.agentmesh.control.data.SessionGrant
 import io.agentmesh.tunnel.Engine
 import io.agentmesh.tunnel.Tunnel
 import java.net.InetAddress
@@ -53,8 +56,9 @@ sealed interface VpnStatus {
  * relay to the agent. This app itself is excluded from the VPN so it can keep
  * talking to the control plane directly.
  *
- * If the tunnel drops (network change, phone stalled the app, server
- * restart) the service requests a fresh session and reconnects on its own.
+ * If the relay drops (network change, phone stalled the app, server restart)
+ * the service requests a fresh session and swaps it in without taking the
+ * VPN interface down.
  */
 class ExitVpnService : VpnService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -63,6 +67,10 @@ class ExitVpnService : VpnService() {
     private var monitor: Job? = null
     private var profileId = ""
     private var deviceName = ""
+    @Volatile private var sessionId = ""
+    @Volatile private var networkChanged = false
+    @Volatile private var underlying: Network? = null
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
@@ -89,7 +97,7 @@ class ExitVpnService : VpnService() {
     }
 
     /** Establishes the VPN interface and starts the engine. Returns an error or null. */
-    private fun connect(relay: String, ticket: String, session: String): String? {
+    private fun connect(grant: SessionGrant): String? {
         engine?.stop()
         val builder = Builder()
             .setSession("AgentMesh via $deviceName")
@@ -115,13 +123,25 @@ class ExitVpnService : VpnService() {
         val fd = pfd.detachFd() // ownership moves to the Go engine
         val eng = Tunnel.newEngine()
         try {
-            eng.start(fd.toLong(), relay, ticket, "", MTU.toLong())
+            eng.start(fd.toLong(), grant.relayUrl, grant.ticket, "", MTU.toLong())
         } catch (e: Exception) {
             runCatching { ParcelFileDescriptor.adoptFd(fd).close() }
             return "Tunnel failed: ${e.message}"
         }
         engine = eng
         currentEngine = eng
+        sessionId = grant.sessionId
+        startMonitor(eng)
+        return null
+    }
+
+    /**
+     * Watches the engine. When only the relay link drops (server hiccup,
+     * phone switched between Wi-Fi and mobile data, congested exit device)
+     * the VPN interface stays up and a new relay link is swapped in, so apps
+     * barely notice. Only if the engine itself dies is the VPN rebuilt.
+     */
+    private fun startMonitor(eng: Engine) {
         val since = System.currentTimeMillis()
         monitor?.cancel()
         monitor = scope.launch {
@@ -131,42 +151,93 @@ class ExitVpnService : VpnService() {
                     if (!userStopped) reconnect(eng.lastError().ifBlank { "Tunnel closed" })
                     break
                 }
-                _status.value = VpnStatus.Connected(deviceName, session, since, eng.bytesUp(), eng.bytesDown(), eng.flows(), eng.failedFlows())
+                if (!eng.relayUp() || networkChanged) {
+                    val why = if (eng.relayUp()) "Network changed" else eng.lastError().ifBlank { "relay connection closed" }
+                    networkChanged = false
+                    if (!recoverRelay(eng, why)) break
+                    continue
+                }
+                _status.value = VpnStatus.Connected(deviceName, sessionId, since, eng.bytesUp(), eng.bytesDown(), eng.flows(), eng.failedFlows())
                 notify("Via $deviceName · ↑ ${human(eng.bytesUp())} ↓ ${human(eng.bytesDown())}")
-                delay(2000)
+                delay(1000)
             }
         }
-        return null
     }
 
-    /** Opens a fresh session with the saved server's connect key and starts the tunnel. */
-    private suspend fun openAndConnect(attemptReason: String?): Boolean {
+    /** Swaps a fresh relay link into the running engine. False if we gave up. */
+    private suspend fun recoverRelay(eng: Engine, reason: String): Boolean {
+        val deadline = System.currentTimeMillis() + GIVE_UP_AFTER_MS
+        var attempt = 0
+        var why = reason
+        while (!userStopped && engine === eng && eng.isRunning) {
+            attempt++
+            _status.value = VpnStatus.Reconnecting(deviceName, attempt, why)
+            notify("Reconnecting to $deviceName (attempt $attempt)…")
+            val grant = try {
+                openSession() ?: return false
+            } catch (e: Exception) {
+                why = "Server unreachable: ${e.message}"
+                null
+            }
+            if (grant != null) {
+                try {
+                    eng.reconnect(grant.relayUrl, grant.ticket, "")
+                    sessionId = grant.sessionId
+                    return true
+                } catch (e: Exception) {
+                    why = e.message ?: "relay connect failed"
+                }
+            }
+            if (System.currentTimeMillis() > deadline) {
+                shutdown("Lost connection to $deviceName: $why")
+                return false
+            }
+            delay(RELAY_RETRY_S[minOf(attempt - 1, RELAY_RETRY_S.lastIndex)] * 1000L)
+        }
+        return false
+    }
+
+    /**
+     * Asks the server for a new session with the saved connect key. Returns
+     * null (after shutting down) when the server says no for good: link
+     * revoked/expired or profile deleted. Throws on transient failures.
+     */
+    private suspend fun openSession(): SessionGrant? {
         val app = application as App
-        val profile = app.profiles.get(profileId) ?: return false.also { shutdown("Saved server was deleted") }
+        val profile = app.profiles.get(profileId) ?: return null.also { shutdown("Saved server was deleted") }
         val grant = try {
             app.connect.open(profile, "Android ${Build.MANUFACTURER} ${Build.MODEL}")
         } catch (e: ApiException) {
             // The server answered "no" (link revoked/expired, device offline): retrying will not help.
             userStopped = true
             shutdown(e.message)
-            return false
-        } catch (e: Exception) {
-            if (attemptReason == null) reconnect("Server unreachable: ${e.message}")
-            return false
+            return null
         }
         deviceName = grant.deviceName.ifBlank { deviceName }
         app.profiles.get(profileId)?.let {
             app.profiles.upsert(it.copy(deviceName = deviceName, lastConnectedAt = System.currentTimeMillis()))
         }
-        val err = connect(grant.relayUrl, grant.ticket, grant.sessionId)
+        return grant
+    }
+
+    /** Opens a fresh session and (re)builds the VPN. Returns true when connected. */
+    private suspend fun openAndConnect(attemptReason: String?): Boolean {
+        val grant = try {
+            openSession() ?: return false
+        } catch (e: Exception) {
+            if (attemptReason == null) reconnect("Server unreachable: ${e.message}")
+            return false
+        }
+        val err = connect(grant)
         if (err != null) {
             if (attemptReason == null) reconnect(err)
             return false
         }
+        watchNetwork()
         return true
     }
 
-    /** Retries with backoff when the tunnel drops or the server is briefly unreachable. */
+    /** Retries with backoff when the tunnel could not be (re)built. */
     private suspend fun reconnect(reason: String) {
         for ((i, wait) in RETRY_DELAYS_S.withIndex()) {
             if (userStopped) return
@@ -178,8 +249,36 @@ class ExitVpnService : VpnService() {
         }
         if (!userStopped) shutdown("Lost connection to $deviceName: $reason")
     }
+
+    /**
+     * Follows the phone's real (non-VPN) default network. On a switch between
+     * Wi-Fi and mobile data the old relay socket is dead but would take the
+     * keepalive timeout to notice, so reconnect straight away instead.
+     */
+    private fun watchNetwork() {
+        if (netCallback != null) return
+        val cm = getSystemService(ConnectivityManager::class.java)
+        val cb = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                runCatching { setUnderlyingNetworks(arrayOf(network)) }
+                val prev = underlying
+                underlying = network
+                if (prev != null && prev != network) networkChanged = true
+            }
+        }
+        runCatching { cm.registerDefaultNetworkCallback(cb) }.onSuccess { netCallback = cb }
+    }
+
+    private fun unwatchNetwork() {
+        val cb = netCallback ?: return
+        netCallback = null
+        underlying = null
+        runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(cb) }
+    }
+
     private fun shutdown(error: String?) {
         monitor?.cancel()
+        unwatchNetwork()
         engine?.stop()
         engine = null
         currentEngine = null
@@ -194,6 +293,7 @@ class ExitVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        unwatchNetwork()
         engine?.stop()
         currentEngine = null
         scope.cancel()
@@ -239,6 +339,10 @@ class ExitVpnService : VpnService() {
         private const val NOTIFICATION_ID = 7
         private const val MTU = 1500
         private val RETRY_DELAYS_S = listOf(1L, 3L, 5L, 10L, 20L, 30L)
+        // Relay swaps: first retry at once, then back off; keep the VPN up
+        // (traffic held, nothing leaks) for up to 10 minutes before giving up.
+        private val RELAY_RETRY_S = listOf(0L, 1L, 2L, 3L, 5L, 10L, 15L, 30L)
+        private const val GIVE_UP_AFTER_MS = 10 * 60 * 1000L
         private val LOCAL_RANGES = listOf(
             "10.0.0.0" to 8, "172.16.0.0" to 12, "192.168.0.0" to 16, "169.254.0.0" to 16, "100.64.0.0" to 10,
         )

@@ -47,22 +47,59 @@ func debugf(format string, args ...any) {
 	}
 }
 
+// lastLog keeps the most recent yamux log line, e.g. "keepalive failed: ...".
+type lastLog struct {
+	mu sync.Mutex
+	s  string
+}
+
+func (l *lastLog) Write(p []byte) (int, error) {
+	line := strings.TrimSpace(string(p))
+	if i := strings.Index(line, "yamux: "); i >= 0 {
+		line = line[i+len("yamux: "):]
+	}
+	debugf("yamux: %s", line)
+	l.mu.Lock()
+	l.s = line
+	l.mu.Unlock()
+	return len(p), nil
+}
+
+func (l *lastLog) get() string { l.mu.Lock(); defer l.mu.Unlock(); return l.s }
+
 // Engine is one exit-node tunnel. Create with NewEngine, then Start/Stop.
+//
+// The TUN device and the userspace stack live as long as the engine. The
+// relay connection under them can be replaced with Reconnect when it drops,
+// so the phone's VPN interface (and apps' view of the network) stays up.
 type Engine struct {
 	mu      sync.Mutex
-	cancel  context.CancelFunc
 	dev     device.Device
 	stk     *stack.Stack
-	sess    *yamux.Session
-	ws      *websocket.Conn
+	relay   *relayConn
 	running atomic.Bool
+	relayUp atomic.Bool
 	lastErr atomic.Value
 
 	up, down, flows, failed atomic.Int64
 }
 
+// relayConn is one WebSocket to the relay with its multiplexer.
+type relayConn struct {
+	cancel context.CancelFunc
+	ws     *websocket.Conn
+	sess   *yamux.Session
+	ylog   *lastLog
+}
+
+func (r *relayConn) close() {
+	r.cancel()
+	_ = r.sess.Close()
+	_ = r.ws.Close(websocket.StatusNormalClosure, "client disconnected")
+}
+
 // Version is the engine version string.
-func Version() string { return "0.6.1" }
+func Version() string { return "0.6.2" }
 
 // NewEngine returns an idle engine.
 func NewEngine() *Engine { return &Engine{} }
@@ -85,6 +122,50 @@ func httpClient(caPEM string) (*http.Client, error) {
 	}, nil
 }
 
+func dialRelay(relayURL, ticket, caPEM string) (*relayConn, error) {
+	hc, err := httpClient(caPEM)
+	if err != nil {
+		return nil, err
+	}
+	u := relayURL
+	switch {
+	case strings.HasPrefix(u, "https://"):
+		u = "wss://" + u[8:]
+	case strings.HasPrefix(u, "http://"):
+		u = "ws://" + u[7:]
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	dctx, dcancel := context.WithTimeout(ctx, 20*time.Second)
+	ws, _, err := websocket.Dial(dctx, u, &websocket.DialOptions{
+		HTTPClient:      hc,
+		HTTPHeader:      http.Header{agentapi.RelayTicketHeader: {ticket}, "User-Agent": {"agentmesh-android"}},
+		Subprotocols:    []string{agentapi.RelaySubprotocol},
+		CompressionMode: websocket.CompressionDisabled,
+	})
+	dcancel()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("connect relay: %w", err)
+	}
+	ws.SetReadLimit(4 << 20)
+	ycfg := exitproto.YamuxConfig()
+	// Our receive window bounds how much the agent may queue per flow. Exit
+	// devices often have little upload bandwidth (every byte the phone gets
+	// is upload for them); with big windows a video queues megabytes ahead of
+	// DNS, page loads and keepalives, so everything else times out and the
+	// agent drops the relay. 256 KiB still allows ~10 Mbit/s per flow.
+	ycfg.MaxStreamWindowSize = 256 << 10
+	ylog := &lastLog{}
+	ycfg.LogOutput = ylog // yamux only reports why it closed a session via its logger
+	sess, err := yamux.Client(websocket.NetConn(ctx, ws, websocket.MessageBinary), ycfg)
+	if err != nil {
+		cancel()
+		ws.CloseNow()
+		return nil, fmt.Errorf("start multiplexer: %w", err)
+	}
+	return &relayConn{cancel: cancel, ws: ws, sess: sess, ylog: ylog}, nil
+}
+
 // Start joins the relay with ticket and begins forwarding packets from the
 // TUN file descriptor fd. It returns once the tunnel is established.
 func (e *Engine) Start(fd int, relayURL, ticket, caPEM string, mtu int) error {
@@ -102,67 +183,76 @@ func (e *Engine) Start(fd int, relayURL, ticket, caPEM string, mtu int) error {
 	e.failed.Store(0)
 	e.lastErr.Store("")
 
-	hc, err := httpClient(caPEM)
+	rc, err := dialRelay(relayURL, ticket, caPEM)
 	if err != nil {
 		return err
 	}
-	u := relayURL
-	switch {
-	case len(u) > 8 && u[:8] == "https://":
-		u = "wss://" + u[8:]
-	case len(u) > 7 && u[:7] == "http://":
-		u = "ws://" + u[7:]
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	dctx, dcancel := context.WithTimeout(ctx, 20*time.Second)
-	ws, _, err := websocket.Dial(dctx, u, &websocket.DialOptions{
-		HTTPClient:      hc,
-		HTTPHeader:      http.Header{agentapi.RelayTicketHeader: {ticket}, "User-Agent": {"agentmesh-android"}},
-		Subprotocols:    []string{agentapi.RelaySubprotocol},
-		CompressionMode: websocket.CompressionDisabled,
-	})
-	dcancel()
-	if err != nil {
-		cancel()
-		return fmt.Errorf("connect relay: %w", err)
-	}
-	ws.SetReadLimit(4 << 20)
-	sess, err := yamux.Client(websocket.NetConn(ctx, ws, websocket.MessageBinary), exitproto.YamuxConfig())
-	if err != nil {
-		cancel()
-		ws.CloseNow()
-		return fmt.Errorf("start multiplexer: %w", err)
-	}
 	dev, err := fdbased.Open(strconv.Itoa(fd), uint32(mtu), 0)
 	if err != nil {
-		cancel()
-		_ = sess.Close()
+		rc.close()
 		return fmt.Errorf("open tun fd: %w", err)
 	}
 	stk, err := core.CreateStack(&core.Config{LinkEndpoint: dev, TransportHandler: &handler{e: e}})
 	if err != nil {
-		cancel()
 		dev.Close()
-		_ = sess.Close()
+		rc.close()
 		return fmt.Errorf("create stack: %w", err)
 	}
-	e.cancel, e.dev, e.stk, e.sess, e.ws = cancel, dev, stk, sess, ws
+	e.dev, e.stk, e.relay = dev, stk, rc
 	e.running.Store(true)
-	go func() {
-		select {
-		case <-sess.CloseChan():
-			e.fail("relay connection closed")
-		case <-ctx.Done():
-		}
-	}()
+	e.relayUp.Store(true)
+	go e.watch(rc)
 	return nil
 }
 
-func (e *Engine) fail(msg string) {
-	if e.running.Load() {
+// Reconnect replaces the relay connection with a new one for a fresh
+// session ticket. The TUN device and stack are kept; flows that were open on
+// the old connection end and apps simply open new ones.
+func (e *Engine) Reconnect(relayURL, ticket, caPEM string) error {
+	if !e.running.Load() {
+		return errors.New("tunnel is not running")
+	}
+	rc, err := dialRelay(relayURL, ticket, caPEM)
+	if err != nil {
+		return err
+	}
+	e.mu.Lock()
+	if !e.running.Load() {
+		e.mu.Unlock()
+		rc.close()
+		return errors.New("tunnel is not running")
+	}
+	old := e.relay
+	e.relay = rc
+	e.relayUp.Store(true)
+	e.lastErr.Store("")
+	e.mu.Unlock()
+	if old != nil {
+		old.close()
+	}
+	go e.watch(rc)
+	return nil
+}
+
+// watch marks the relay down when rc's multiplexer closes (unless it has
+// already been replaced or the engine stopped).
+func (e *Engine) watch(rc *relayConn) {
+	<-rc.sess.CloseChan()
+	msg := "relay connection closed"
+	if why := rc.ylog.get(); why != "" {
+		msg += ": " + why
+	}
+	e.mu.Lock()
+	current := e.relay == rc && e.running.Load()
+	if current {
+		e.relayUp.Store(false)
 		e.lastErr.Store(msg)
 	}
-	e.Stop()
+	e.mu.Unlock()
+	if current {
+		debugf("%s", msg)
+		rc.close()
+	}
 }
 
 // Stop tears the tunnel down. It is safe to call more than once.
@@ -172,14 +262,9 @@ func (e *Engine) Stop() {
 	if !e.running.Swap(false) {
 		return
 	}
-	if e.cancel != nil {
-		e.cancel()
-	}
-	if e.sess != nil {
-		_ = e.sess.Close()
-	}
-	if e.ws != nil {
-		_ = e.ws.Close(websocket.StatusNormalClosure, "client disconnected")
+	e.relayUp.Store(false)
+	if e.relay != nil {
+		e.relay.close()
 	}
 	if e.stk != nil {
 		e.stk.Close()
@@ -187,13 +272,17 @@ func (e *Engine) Stop() {
 	if e.dev != nil {
 		e.dev.Close()
 	}
-	e.stk, e.dev, e.sess, e.ws = nil, nil, nil, nil
+	e.stk, e.dev, e.relay = nil, nil, nil
 }
 
-// IsRunning reports whether the tunnel is up.
+// IsRunning reports whether the tunnel (VPN side) is up.
 func (e *Engine) IsRunning() bool { return e.running.Load() }
 
-// LastError is the reason the tunnel stopped unexpectedly ("" if none).
+// RelayUp reports whether traffic can currently reach the agent. When it is
+// false while IsRunning is true, call Reconnect with a new session ticket.
+func (e *Engine) RelayUp() bool { return e.relayUp.Load() }
+
+// LastError is why the relay last dropped ("" while it is up).
 func (e *Engine) LastError() string { s, _ := e.lastErr.Load().(string); return s }
 
 // BytesUp is traffic sent to the internet through the agent.
@@ -256,7 +345,14 @@ func (c counter) Write(p []byte) (int, error) {
 
 func (h *handler) open(network byte, addr string) (net.Conn, error) {
 	e := h.e
-	sess := func() *yamux.Session { e.mu.Lock(); defer e.mu.Unlock(); return e.sess }()
+	sess := func() *yamux.Session {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		if e.relay == nil {
+			return nil
+		}
+		return e.relay.sess
+	}()
 	if sess == nil {
 		return nil, errors.New("tunnel closed")
 	}

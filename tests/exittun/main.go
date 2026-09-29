@@ -222,6 +222,59 @@ func main() {
 				}
 			}()
 		}
+		// Phone-like heavy traffic: bulk downloads (video) and QUIC alongside
+		// the small requests.
+		if *bench != "" {
+			for w := 0; w < 3; w++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for time.Now().Before(stop) && eng.IsRunning() {
+						_, _ = sh("curl", "-s", "--max-time", "60", "-o", "/dev/null", "https://"+*bench+"/__down?bytes=20000000")
+					}
+				}()
+			}
+		}
+		if *quic != "" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for time.Now().Before(stop) && eng.IsRunning() {
+					_, _ = sh("/src/bin/quiccheck-linux", "https://"+*quic+"/cdn-cgi/trace")
+					time.Sleep(2 * time.Second)
+				}
+			}()
+		}
+		// Like the app: when the relay drops, get a fresh session and swap it in
+		// under the running TUN. With -link, also force one swap at 60s to
+		// exercise the handover under load.
+		start := time.Now()
+		swapped, drops := false, 0
+		for time.Now().Before(stop) && eng.IsRunning() {
+			time.Sleep(5 * time.Second)
+			fmt.Printf("  t=%3.0fs relay_up=%v up=%d down=%d flows=%d\n", time.Since(start).Seconds(), eng.RelayUp(), eng.BytesUp(), eng.BytesDown(), eng.Flows())
+			if *link == "" {
+				continue
+			}
+			force := !swapped && time.Since(start) > 60*time.Second
+			if eng.RelayUp() && !force {
+				continue
+			}
+			if !eng.RelayUp() {
+				drops++
+				fmt.Println("  relay DROPPED:", eng.LastError())
+			}
+			_, rURL, tk, sid := connectWithLink(*link, false)
+			err := eng.Reconnect(rURL, tk, "")
+			fmt.Printf("  reconnected (forced=%v) session=%s err=%v\n", force, sid, err)
+			swapped = swapped || force
+		}
+		if *link != "" {
+			check("relay swap under load keeps the TUN up", swapped && eng.IsRunning() && eng.RelayUp(), fmt.Sprintf("unplanned drops=%d", drops))
+		}
+		if !eng.IsRunning() {
+			fmt.Printf("  engine DIED after %.0fs: %s\n", time.Since(start).Seconds(), eng.LastError())
+		}
 		wg.Wait()
 		check("sustained load through relay", eng.IsRunning() && errN.Load() == 0, fmt.Sprintf("requests ok=%d failed=%d engine_running=%v last_error=%q", okN.Load(), errN.Load(), eng.IsRunning(), eng.LastError()))
 	}
