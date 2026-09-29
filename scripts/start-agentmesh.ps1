@@ -99,6 +99,18 @@ if ($token) {
 if ((Get-EnvValue "AM_PUBLIC_GATEWAY_URL") -ne $url) { Set-EnvValue "AM_PUBLIC_GATEWAY_URL" $url }
 docker compose @compose up -d --wait control-api | Out-Null
 
+# 6. This computer's own agent (shows it online in the dashboard). Runs from
+#    the dev state dir when it was enrolled that way and no service is installed.
+$agentExe = Join-Path $root "bin\agentmesh-agent.exe"
+$agentState = Join-Path $root ".agent-dev\windows"
+if (-not (Get-Service AgentMesh -ErrorAction SilentlyContinue) -and (Test-Path $agentExe) -and
+    (Test-Path (Join-Path $agentState "agent.json")) -and -not (Get-Process agentmesh-agent -ErrorAction SilentlyContinue)) {
+    Start-Process -FilePath $agentExe -ArgumentList "run --state-dir `"$agentState`"" -WindowStyle Hidden `
+        -RedirectStandardError (Join-Path $root ".agent-dev\windows-agent.log") `
+        -RedirectStandardOutput (Join-Path $root ".agent-dev\windows-agent.out")
+    Write-Host "Started this computer's agent ($env:COMPUTERNAME)."
+}
+
 Write-Host ""
 Write-Host "AgentMesh is running." -ForegroundColor Green
 Write-Host "  Public address : $url" -ForegroundColor Cyan
