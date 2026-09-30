@@ -15,11 +15,10 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -trimpath -ldflags "-s -w -X github.com/enfec/agentmesh/agents/core.Version=${VERSION}" \
       -o /out/agentmesh-agent ./agents/linux
 
-FROM debian:12-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates procps iproute2 \
-    && rm -rf /var/lib/apt/lists/*
+# Alpine: the agent is a static Go binary and needs no system tools; the
+# shell is only for the enroll-then-run entrypoint. CA certificates are in the base.
+FROM alpine:3.22
 COPY --from=build /out/agentmesh-agent /usr/local/bin/agentmesh-agent
-COPY infrastructure/docker/agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh
-RUN chmod 0755 /usr/local/bin/agent-entrypoint.sh
+COPY --chmod=0755 infrastructure/docker/agent-entrypoint.sh /usr/local/bin/agent-entrypoint.sh
 VOLUME ["/var/lib/agentmesh"]
 ENTRYPOINT ["/usr/local/bin/agent-entrypoint.sh"]
