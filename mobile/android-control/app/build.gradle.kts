@@ -23,6 +23,12 @@ android {
         targetSdk = 35
         versionCode = (System.getenv("AGENTMESH_VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("AGENTMESH_VERSION_NAME") ?: "0.2.0"
+        // Where the app looks up the server's current address when the user
+        // types a pairing code (no QR link to carry it). start-agentmesh.ps1
+        // keeps this gist pointing at the current public tunnel URL.
+        val rendezvous = System.getenv("AGENTMESH_DEFAULT_RENDEZVOUS")
+            ?: (project.findProperty("agentmesh.defaultRendezvous") as String?) ?: ""
+        buildConfigField("String", "DEFAULT_RENDEZVOUS", "\"$rendezvous\"")
     }
 
     signingConfigs {

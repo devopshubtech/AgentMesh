@@ -73,7 +73,16 @@ $token = ""
 try {
     # PowerShell 5 pipes to native programs with CRLF/BOM, which git rejects; feed a file via cmd instead.
     $credIn = Join-Path $env:TEMP "agentmesh-cred-query.txt"
-    [IO.File]::WriteAllText($credIn, "protocol=https`nhost=github.com`n`n")
+    # With several GitHub accounts saved, Git Credential Manager wants to show an
+    # account picker (impossible here), so ask for the gist owner's account by name.
+    $ghUser = Get-EnvValue "AM_RENDEZVOUS_GITHUB_USER"
+    if (-not $ghUser -and $gistId) {
+        try { $ghUser = (Invoke-RestMethod "https://api.github.com/gists/$gistId").owner.login } catch { }
+        if ($ghUser) { Set-EnvValue "AM_RENDEZVOUS_GITHUB_USER" $ghUser }
+    }
+    $query = "protocol=https`nhost=github.com`n"
+    if ($ghUser) { $query += "username=$ghUser`n" }
+    [IO.File]::WriteAllText($credIn, "$query`n")
     $out = cmd /c "set GIT_TERMINAL_PROMPT=0&& git credential fill < `"$credIn`" 2>nul"
     Remove-Item $credIn -ErrorAction SilentlyContinue
     $token = (($out | Where-Object { $_ -like "password=*" }) -replace "^password=", "") | Select-Object -First 1
@@ -84,6 +93,13 @@ if ($token) {
     $body = @{ description = "AgentMesh current server address (updated by start-agentmesh.ps1)"; public = $false
                files = @{ "agentmesh-endpoint.json" = @{ content = $content } } } | ConvertTo-Json -Depth 5
     try {
+        if (-not $gistId) {
+            # Reuse this GitHub account's existing AgentMesh gist (e.g. set up on another
+            # computer): the phone app has that address built in for pairing codes.
+            $mine = Invoke-RestMethod -Headers $h "https://api.github.com/gists?per_page=100"
+            $old = $mine | Where-Object { $_.files.PSObject.Properties.Name -contains "agentmesh-endpoint.json" } | Select-Object -First 1
+            if ($old) { $gistId = $old.id; Set-EnvValue "AM_RENDEZVOUS_GIST_ID" $gistId }
+        }
         if ($gistId) {
             $g = Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body $body "https://api.github.com/gists/$gistId"
         } else {

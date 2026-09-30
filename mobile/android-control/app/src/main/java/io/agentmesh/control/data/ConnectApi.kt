@@ -1,5 +1,6 @@
 package io.agentmesh.control.data
 
+import io.agentmesh.control.BuildConfig
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,50 @@ class ConnectApi(private val store: ProfileStore) {
             val g = openAt(fresh, p, clientLabel)
             store.upsert(p.copy(serverUrl = fresh))
             g
+        }
+    }
+
+    /**
+     * Exchanges a 6-digit pairing code for a connect link. The phone does not
+     * know the server's address, so it tries the address published at the
+     * app's built-in rendezvous URL, then the servers it has saved.
+     */
+    suspend fun pair(code: String, clientLabel: String): ConnectLink = withContext(Dispatchers.IO) {
+        val servers = linkedSetOf<String>()
+        BuildConfig.DEFAULT_RENDEZVOUS.takeIf { it.isNotBlank() }?.let { r -> runCatching { resolve(r) }.getOrNull()?.let(servers::add) }
+        store.all().forEach { p ->
+            p.rendezvousUrl.takeIf { it.isNotBlank() }?.let { r -> runCatching { resolve(r) }.getOrNull()?.let(servers::add) }
+            servers.add(p.serverUrl)
+        }
+        if (servers.isEmpty()) throw IOException("Could not find the AgentMesh server. Check your internet connection, or scan the QR code instead.")
+        var last: Exception? = null
+        for (server in servers) {
+            try {
+                return@withContext pairAt(server, code, clientLabel)
+            } catch (e: Exception) {
+                // A wrong code on one server may still be right on another; prefer reporting the server's answer.
+                if (last !is ApiException) last = e
+            }
+        }
+        throw last ?: IOException("Could not reach the AgentMesh server")
+    }
+
+    private fun pairAt(server: String, code: String, clientLabel: String): ConnectLink {
+        val body = buildJsonObject { put("code", code); put("client_label", clientLabel) }.toString()
+            .toRequestBody("application/json".toMediaType())
+        val req = Request.Builder().url("$server/v1/connect/pair").post(body).header("User-Agent", "AgentMesh-Android").build()
+        http.newCall(req).execute().use { r ->
+            val text = r.body?.string().orEmpty()
+            if (!r.isSuccessful) {
+                val err = runCatching { json.parseToJsonElement(text).jsonObject["error"]?.jsonObject }.getOrNull()
+                val msg = err?.get("message")?.jsonPrimitive?.content
+                if (msg == null) throw IOException("server unreachable (HTTP ${r.code})")
+                throw ApiException(r.code, err["code"]?.jsonPrimitive?.content ?: "http_${r.code}", msg)
+            }
+            val o = json.parseToJsonElement(text).jsonObject
+            val link = Links.parse(o["link"]!!.jsonPrimitive.content) ?: throw IOException("server sent an invalid link")
+            // Use the address that actually answered (it works from this network).
+            return link.copy(serverUrl = server)
         }
     }
 

@@ -20,6 +20,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -112,8 +113,8 @@ fun AgentMeshApp(vm: AppViewModel, onScan: () -> Unit, onConnect: (ConnectProfil
             }
         }
 
-        if (st.showAdd) AddServerDialog(onDismiss = { vm.showAdd(false) }, onScan = onScan, onPaste = { text ->
-            vm.importLink(text)?.let(onConnect)
+        if (st.showAdd) AddServerDialog(busy = st.pairing, onDismiss = { vm.showAdd(false) }, onScan = onScan, onSubmit = { text ->
+            vm.submitCodeOrLink(text, onConnect)
         })
         st.editing?.let { p ->
             EditServerDialog(p, onDismiss = { vm.edit(null) }, onSave = { name, server, link -> vm.saveEdit(p, name, server, link) },
@@ -134,7 +135,7 @@ private fun WelcomeCard(onAdd: () -> Unit) {
             Button(onClick = onAdd, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                 Text("Connect to remote server", fontSize = 16.sp)
             }
-            Text("You need the QR code or link from the AgentMesh dashboard → Connect a phone.", color = Muted, fontSize = 12.sp)
+            Text("You need the QR code or 6-digit pairing code from the AgentMesh dashboard → Connect a phone.", color = Muted, fontSize = 12.sp)
         }
     }
 }
@@ -192,20 +193,23 @@ private fun StatusCard(vpn: VpnStatus, exitIp: String?, checking: Boolean, onChe
 }
 
 @Composable
-private fun AddServerDialog(onDismiss: () -> Unit, onScan: () -> Unit, onPaste: (String) -> Unit) {
+private fun AddServerDialog(busy: Boolean, onDismiss: () -> Unit, onScan: () -> Unit, onSubmit: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Connect to remote server") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onScan, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Scan QR code") }
-                Text("or paste the connect link:", color = Muted, fontSize = 13.sp)
-                OutlinedTextField(text, { text = it }, placeholder = { Text("https://…/join.html#k=…") },
-                    minLines = 2, modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                Button(onClick = onScan, enabled = !busy, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Scan QR code") }
+                Text("or enter the 6-digit pairing code (or paste the link):", color = Muted, fontSize = 13.sp)
+                OutlinedTextField(text, { text = it }, placeholder = { Text("123 456") }, singleLine = true, enabled = !busy,
+                    textStyle = LocalTextStyle.current.copy(fontSize = 22.sp, letterSpacing = 4.sp),
+                    modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
+                Text("Get the code from the dashboard → Connect a phone → Pairing code.", color = Muted, fontSize = 12.sp)
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
             }
         },
-        confirmButton = { Button(onClick = { onPaste(text) }, enabled = text.isNotBlank()) { Text("Save & connect") } },
+        confirmButton = { Button(onClick = { onSubmit(text.trim()) }, enabled = text.isNotBlank() && !busy) { Text(if (busy) "Pairing…" else "Connect") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }

@@ -3,11 +3,11 @@
 > ## ⬇️ Direct downloads
 > | App | Direct link |
 > |---|---|
-> | 📱 **Android app v0.6.2 (APK)** | **[Download agentmesh-control-v0.6.2.apk](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-control-v0.6.2.apk)** · always-latest: [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
-> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.6.2_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_darwin_arm64.tar.gz)** |
-> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.6.2_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_darwin_amd64.tar.gz)** |
-> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.6.2_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_windows_amd64.zip)** |
-> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.6.2_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_amd64.deb)** |
+> | 📱 **Android app v0.6.3 (APK)** | **[Download agentmesh-control-v0.6.3.apk](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-control-v0.6.3.apk)** · always-latest: [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
+> | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.6.3_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_arm64.tar.gz)** |
+> | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.6.3_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_amd64.tar.gz)** |
+> | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.6.3_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_amd64.zip)** |
+> | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.6.3_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_amd64.deb)** |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
@@ -17,8 +17,8 @@
 ## 📱 Use a computer's internet on your phone (the 1-minute version)
 
 1. **On the computer:** run `powershell -ExecutionPolicy Bypass -File scripts\start-agentmesh.ps1`. Optionally also run `scripts\install-autostart.ps1` so it keeps running and heals itself after sleep or a reboot.
-2. **Create the QR code:** open **http://localhost:13000**, sign in with the admin account, go to **Connect a phone**, and click **Create connect QR code**.
-3. **On any phone:** scan the QR code with the camera, or open the link. It opens the AgentMesh app (or offers to install it). Tap **Connect**. No username or password is needed on the phone.
+2. **Create a QR code or pairing code:** open **http://localhost:13000**, sign in with the admin account, and go to **Connect a phone**. Then click **Create connect QR code**, or click **Create pairing code** for a 6-digit code that works for 15 minutes.
+3. **On any phone:** open the AgentMesh app and tap **Connect to remote server**. Then either scan the QR code, or type the 6-digit code. Opening the QR link from the camera also works. No username, password or domain is needed; the app finds the computer's current address by itself.
 4. **Result:** the phone's internet now goes out through the computer. "What is my IP" shows the computer's IP, on mobile data or any Wi-Fi.
 
 Other details:
@@ -59,19 +59,19 @@ Phases 2 to 4 (macOS, artifacts and updates, metrics, mobile, remote sessions) a
 
 Every file is attached to this repo's **[Releases](https://github.com/devopshubtech/AgentMesh/releases/latest)**, along with a `SHA256SUMS` file.
 
-| Platform | Download (v0.6.2) |
+| Platform | Download (v0.6.3) |
 |---|---|
 | **Android app** (control + exit node) | [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
-| Windows x64 | [agentmesh-agent_0.6.2_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_windows_amd64.zip) |
-| Windows ARM64 | [agentmesh-agent_0.6.2_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_windows_arm64.zip) |
-| macOS Apple Silicon | [agentmesh-agent_0.6.2_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_darwin_arm64.tar.gz) |
-| macOS Intel | [agentmesh-agent_0.6.2_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_darwin_amd64.tar.gz) |
-| Debian / Ubuntu x64 | [agentmesh-agent_0.6.2_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_amd64.deb) |
-| Debian / Ubuntu ARM64 | [agentmesh-agent_0.6.2_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_arm64.deb) |
-| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.6.2_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_armhf.deb) |
-| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.6.2-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent-0.6.2-1.x86_64.rpm) |
-| RHEL / Fedora ARM64 | [agentmesh-agent-0.6.2-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent-0.6.2-1.aarch64.rpm) |
-| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.2/agentmesh-agent_0.6.2_linux_armv7.tar.gz) |
+| Windows x64 | [agentmesh-agent_0.6.3_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_amd64.zip) |
+| Windows ARM64 | [agentmesh-agent_0.6.3_windows_arm64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_arm64.zip) |
+| macOS Apple Silicon | [agentmesh-agent_0.6.3_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_arm64.tar.gz) |
+| macOS Intel | [agentmesh-agent_0.6.3_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_amd64.tar.gz) |
+| Debian / Ubuntu x64 | [agentmesh-agent_0.6.3_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_amd64.deb) |
+| Debian / Ubuntu ARM64 | [agentmesh-agent_0.6.3_arm64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_arm64.deb) |
+| Raspberry Pi / ARMv7 (.deb) | [agentmesh-agent_0.6.3_armhf.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_armhf.deb) |
+| RHEL / Fedora / Rocky x64 | [agentmesh-agent-0.6.3-1.x86_64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent-0.6.3-1.x86_64.rpm) |
+| RHEL / Fedora ARM64 | [agentmesh-agent-0.6.3-1.aarch64.rpm](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent-0.6.3-1.aarch64.rpm) |
+| Any Linux (static binary) | [x64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_linux_amd64.tar.gz) · [ARM64](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_linux_arm64.tar.gz) · [ARMv7](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_linux_armv7.tar.gz) |
 
 **One-line install.** These always pull the latest release and check the SHA-256 before installing. Get `<gateway>` and the token from the dashboard's **Enrollment** page. Add `--ca-file ca.pem` when the server uses a private or development CA, and `--enable-exit-node` to let this device act as an exit node.
 

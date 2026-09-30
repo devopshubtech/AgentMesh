@@ -59,6 +59,7 @@ type Server struct {
 	refreshIP  *ratelimit.Keyed
 	commandsRL *ratelimit.Keyed
 	connectRL  *ratelimit.Keyed
+	pairRL     *ratelimit.Keyed // global: all pairing-code attempts
 }
 
 // New builds the server.
@@ -70,6 +71,8 @@ func New(d Deps) *Server {
 		refreshIP:  ratelimit.New(60, 30),
 		commandsRL: ratelimit.New(60, 20),
 		connectRL:  ratelimit.New(30, 10),
+		// ~20 guesses/min total: a 15-minute code survives ~300 of 1,000,000.
+		pairRL: ratelimit.New(20, 20),
 	}
 }
 
@@ -88,6 +91,8 @@ func (s *Server) Handler() http.Handler {
 		r.Post("/auth/logout", httpx.H(s.logout))
 		// Public: the connect key (QR code / link) is the credential.
 		r.Post("/connect/session", httpx.H(s.openConnectSession))
+		// Public: a short-lived 6-digit pairing code, exchanged for a connect key.
+		r.Post("/connect/pair", httpx.H(s.redeemPairCode))
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
@@ -110,6 +115,9 @@ func (s *Server) Handler() http.Handler {
 			r.Get("/devices/{id}/connect-keys", httpx.H(s.listConnectKeys))
 			r.Post("/devices/{id}/connect-keys", httpx.H(s.createConnectKey))
 			r.Delete("/connect-keys/{id}", httpx.H(s.revokeConnectKey))
+			r.Get("/devices/{id}/pair-codes", httpx.H(s.listPairCodes))
+			r.Post("/devices/{id}/pair-codes", httpx.H(s.createPairCode))
+			r.Delete("/pair-codes/{id}", httpx.H(s.revokePairCode))
 
 			r.Get("/commands/{id}", httpx.H(s.getCommand))
 			r.Post("/commands/{id}/cancel", httpx.H(s.cancelCommand))

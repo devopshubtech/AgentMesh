@@ -1,6 +1,7 @@
 package io.agentmesh.control.ui
 
 import android.app.Application
+import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import io.agentmesh.control.App
@@ -21,6 +22,7 @@ data class UiState(
     val editing: ConnectProfile? = null,
     val exitIp: String? = null,
     val checkingIp: Boolean = false,
+    val pairing: Boolean = false,
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -45,6 +47,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(showAdd = false) }
         reload()
         return p
+    }
+
+    /**
+     * Handles what was typed in the Add dialog: a 6-digit pairing code is
+     * exchanged with the server for a connect link; anything else is treated
+     * as a pasted link. onSaved runs with the new server when it worked.
+     */
+    fun submitCodeOrLink(raw: String, onSaved: (ConnectProfile) -> Unit) {
+        val digits = raw.filter { it.isDigit() }
+        if (digits.length != 6 || raw.any { it.isLetter() }) {
+            importLink(raw)?.let(onSaved)
+            return
+        }
+        _state.update { it.copy(pairing = true) }
+        viewModelScope.launch {
+            val app = getApplication<App>()
+            val link = runCatching { app.connect.pair(digits, "Android ${Build.MANUFACTURER} ${Build.MODEL}") }
+            _state.update { it.copy(pairing = false) }
+            link.onFailure { return@launch toast(it.message ?: "Pairing failed") }
+            val p = store.import(link.getOrThrow())
+            _state.update { it.copy(showAdd = false) }
+            reload()
+            onSaved(p)
+        }
     }
 
     fun saveEdit(p: ConnectProfile, name: String, server: String, newLink: String) {

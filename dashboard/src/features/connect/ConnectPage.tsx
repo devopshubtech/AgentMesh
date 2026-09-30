@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import QRCode from 'qrcode';
-import { Link2, QrCode, Smartphone, Trash2 } from 'lucide-react';
-import { useConnectKeys, useCreateConnectKey, useRevokeConnectKey, type CreatedConnectKey } from '@/api/connect';
+import { KeyRound, Link2, QrCode, Smartphone, Trash2 } from 'lucide-react';
+import {
+  useConnectKeys,
+  useCreateConnectKey,
+  useCreatePairCode,
+  useRevokeConnectKey,
+  useRevokePairCode,
+  type CreatedConnectKey,
+  type PairCode,
+} from '@/api/connect';
 import { useDevices } from '@/api/devices';
 import { useDeviceSessions, useTerminateSession } from '@/api/sessions';
 import { useCan } from '@/auth/context';
@@ -40,6 +48,71 @@ function QrImage({ text }: { text: string }) {
     <img src={src} alt="Connect QR code" className="size-72 rounded-md border border-border bg-white p-2" />
   ) : (
     <Spinner label="Generating QR…" />
+  );
+}
+
+function useCountdown(until: string | undefined) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!until) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [until]);
+  return until ? Math.max(0, Math.floor((new Date(until).getTime() - now) / 1000)) : 0;
+}
+
+/** The typed alternative to the QR code: a 6-digit code valid for 15 minutes. */
+function PairingCard({ deviceId, deviceName, canManage }: { deviceId: string; deviceName: string; canManage: boolean }) {
+  const create = useCreatePairCode();
+  const revoke = useRevokePairCode();
+  const [code, setCode] = useState<PairCode | null>(null);
+  const left = useCountdown(code?.expires_at);
+  useEffect(() => setCode(null), [deviceId]);
+  const live = code && left > 0;
+  return (
+    <Card className="mt-6 p-5">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 font-semibold">
+            <KeyRound className="size-4" aria-hidden /> Or pair with a 6-digit code
+          </div>
+          <p className="mt-1 max-w-xl text-sm text-muted">
+            No camera needed. In the app tap <span className="font-medium text-fg">Connect to remote server</span> and type
+            the code. It works on mobile data or any Wi-Fi, for any number of phones, for 15 minutes. Each phone keeps its
+            own link afterwards (listed below).
+          </p>
+        </div>
+        {live ? (
+          <div className="flex items-center gap-4">
+            <div className="text-center">
+              <div className="font-mono text-4xl font-bold tracking-[0.3em]">
+                {code.code?.slice(0, 3)} {code.code?.slice(3)}
+              </div>
+              <div className="text-xs text-muted">
+                expires in {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={revoke.isPending}
+              onClick={() => revoke.mutate(code.id, { onSuccess: () => setCode(null) })}
+            >
+              Stop code
+            </Button>
+          </div>
+        ) : (
+          <Button
+            icon={<KeyRound className="size-4" />}
+            loading={create.isPending}
+            disabled={!canManage}
+            onClick={() => create.mutate({ deviceId, label: 'Pairing code' }, { onSuccess: (pc) => setCode(pc) })}
+          >
+            Create pairing code for {deviceName}
+          </Button>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -218,6 +291,8 @@ export function ConnectPage() {
           </Card>
         </div>
       )}
+
+      {selected && <PairingCard deviceId={selected.id} deviceName={selected.name} canManage={canManage} />}
 
       {selected && <ConnectedPhones deviceId={selected.id} deviceName={selected.name} />}
 

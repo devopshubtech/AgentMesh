@@ -82,11 +82,10 @@ func (s *Service) CreateConnectKey(ctx context.Context, a devices.Actor, deviceI
 	if expiresInS < 0 || expiresInS > 3650*86400 {
 		return nil, httpx.Validation{"expires_in_s": "must be between 0 (never) and 10 years"}.Err()
 	}
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
+	secret, err := newConnectSecret()
+	if err != nil {
 		return nil, err
 	}
-	secret := connectKeyPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	id := uuid.Must(uuid.NewV7())
 	var exp *time.Time
 	if expiresInS > 0 {
@@ -94,7 +93,7 @@ func (s *Service) CreateConnectKey(ctx context.Context, a devices.Actor, deviceI
 		exp = &t
 	}
 	var out *CreatedKey
-	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
+	err = db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		d, err := s.devices.Get(ctx, tx, a.P.OrgID, deviceID)
 		if err != nil {
 			return err
@@ -122,6 +121,14 @@ func (s *Service) CreateConnectKey(ctx context.Context, a devices.Actor, deviceI
 		return nil
 	})
 	return out, err
+}
+
+func newConnectSecret() (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return connectKeyPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
 // ListConnectKeys returns a device's keys, newest first.

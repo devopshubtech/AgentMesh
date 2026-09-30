@@ -52,3 +52,29 @@ export function useRevokeConnectKey(deviceId: string) {
     onSuccess: () => qc.invalidateQueries({ queryKey: keysKey(deviceId) }),
   });
 }
+
+/** A short-lived 6-digit code typed into the phone app instead of scanning a QR code. */
+export interface PairCode {
+  id: string;
+  device_id: string;
+  label: string;
+  created_at: string;
+  expires_at: string;
+  revoked_at: string | null;
+  uses: number;
+  /** Only present in the create response. */
+  code?: string;
+}
+
+export function useCreatePairCode() {
+  return useMutation({
+    mutationFn: ({ deviceId, label }: { deviceId: string; label: string }) =>
+      api<PairCode>(`/devices/${encodeURIComponent(deviceId)}/pair-codes`, { method: 'POST', body: { label } }),
+  });
+}
+
+export function useRevokePairCode() {
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/pair-codes/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  });
+}
