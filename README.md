@@ -8,12 +8,30 @@
 > | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.6.3_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_amd64.tar.gz)** |
 > | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.6.3_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_amd64.zip)** |
 > | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.6.3_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_amd64.deb)** |
+> | 🖥️ **Server for Mac mini / macOS (whole backend)** | **[agentmesh-server_0.6.3_macos.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos.tar.gz)** · see [Run the server on a Mac mini](#run-the-server-on-a-mac-mini) |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
 > **macOS install:** `tar -xzf agentmesh-agent_*_darwin_*.tar.gz && sudo ./install.sh --server https://<gateway>:18443 --token am_enr_...`
 > **Android install:** open the APK link on the phone and allow "Install unknown apps" when asked.
 > **Need help?** Report a problem or ask a question on the [Issues page](https://github.com/devopshubtech/AgentMesh/issues).
+
+## 🖥️ Run the server on a Mac mini
+
+The server package runs the whole backend (database, API, gateway, dashboard) in Docker on the Mac. Docker Desktop is the only requirement.
+
+```bash
+curl -fLO https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos.tar.gz
+tar -xzf agentmesh-server_0.6.3_macos.tar.gz && cd agentmesh-server
+./install-server.sh
+```
+
+- **First run** builds the images, generates secrets, keys and certificates, starts everything and prints the admin login. Open **http://localhost:13000** on the Mac.
+- **Public URL (permanent):** create a named tunnel in Cloudflare Zero Trust with service `https://dashboard:443` and *No TLS Verify*, then run `./install-server.sh --tunnel-token <token> --public-url https://api.example.com`.
+- **Public URL (temporary, for testing):** `./install-server.sh --quick-tunnel` prints a `trycloudflare.com` address.
+- **Use the Mac as an exit node too:** add `--agent-token am_enr_...` (from **Enrollment → New token**).
+- **Re-running is safe:** secrets and data are kept; it just rebuilds and restarts.
+- **Dashboard on Vercel (optional):** deploy `dashboard/` and set the backend URL in [dashboard/vercel.json](dashboard/vercel.json). Vercel forwards `/v1/*` to the Mac, so login cookies keep working.
 
 ## 📱 Use a computer's internet on your phone (the 1-minute version)
 

@@ -143,6 +143,21 @@ services:
     depends_on:
       dashboard: { condition: service_healthy }
 
+  # Permanent public URL on your own domain via a named Cloudflare tunnel.
+  # In Cloudflare Zero Trust → Networks → Tunnels, create a tunnel, add a public
+  # hostname (e.g. api.example.com) with service https://dashboard:443 and
+  # "No TLS Verify" on, then put its token in .env as AM_TUNNEL_TOKEN.
+  #   docker compose --profile named up -d tunnel-named
+  tunnel-named:
+    profiles: [named]
+    image: cloudflare/cloudflared:2025.8.1
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--protocol", "http2", "run"]
+    environment:
+      TUNNEL_TOKEN: ${AM_TUNNEL_TOKEN:-}
+    depends_on:
+      dashboard: { condition: service_healthy }
+
   # Exit node running on this host (Linux agent in a container). Traffic
   # leaves with the host's public IP; useful where the native agent cannot
   # run (e.g. Windows Application Control blocks unsigned binaries).
