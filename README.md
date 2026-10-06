@@ -8,7 +8,7 @@
 > | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.6.3_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_amd64.tar.gz)** |
 > | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.6.3_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_amd64.zip)** |
 > | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.6.3_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_amd64.deb)** |
-> | 🖥️ **Server for Mac mini / macOS (whole backend)** | **[agentmesh-server_0.6.3_macos.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos.tar.gz)** · see [Run the server on a Mac mini](#run-the-server-on-a-mac-mini) |
+> | 🖥️ **Server for Mac mini (native, Apple Silicon)** | **[agentmesh-server_0.6.3_macos_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_arm64.tar.gz)** · Intel: [agentmesh-server_0.6.3_macos_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_amd64.tar.gz) · see [Run the server on a Mac mini](#run-the-server-on-a-mac-mini) |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
@@ -18,21 +18,24 @@
 
 ## 🖥️ Run the server on a Mac mini
 
-The server package runs the whole backend (database, API, gateway, dashboard) in Docker on the Mac. Docker Desktop is the only requirement.
+Native install, no Docker: the AgentMesh server, NATS, a Caddy web front and cloudflared run as launchd services that start at boot. The database is an external Postgres, for example Neon from Vercel.
 
 ```bash
-curl -fLO https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos.tar.gz
-tar -xzf agentmesh-server_0.6.3_macos.tar.gz && cd agentmesh-server
-./install-server.sh
+# Apple Silicon (M1–M4); use _macos_amd64 on an Intel Mac
+curl -fLO https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_arm64.tar.gz
+tar -xzf agentmesh-server_0.6.3_macos_arm64.tar.gz && cd agentmesh-server
+./install.sh
 ```
 
-- **First run** asks for the dashboard admin email and password (12+ characters; press Enter to generate one). It then builds the images, generates secrets, keys and certificates, and starts everything. Open **http://localhost:13000** on the Mac.
-- **External database (e.g. Neon from Vercel):** put a file named `agentmesh-db.env` next to `install-server.sh` containing `AM_DATABASE_URL=<direct/unpooled connection string>`, or answer the installer's database question. Never commit or publish that file; it is git-ignored. Tables are created automatically on first start.
-- **Public URL (permanent):** create a named tunnel in Cloudflare Zero Trust with service `https://dashboard:443` and *No TLS Verify*, then run `./install-server.sh --tunnel-token <token> --public-url https://api.example.com`.
-- **Public URL (temporary, for testing):** `./install-server.sh --quick-tunnel` prints a `trycloudflare.com` address.
+- **First run** asks for the dashboard admin email and password (12+ characters; press Enter to generate one) and the database URL. It installs to `/usr/local/agentmesh`, generates keys and certificates, starts the services and creates the database tables. The dashboard is at **https://localhost:13443**.
+- **Database:** use the **direct (unpooled)** connection string; the installer refuses a `-pooler` one. To skip the question, put `AM_DATABASE_URL=<url>` in a file named `agentmesh-db.env` next to `install.sh`. Never commit or publish that file; it is git-ignored.
+- **Public URL (permanent):** create a named tunnel in Cloudflare Zero Trust with a public hostname whose service is `https://localhost:13443` with *No TLS Verify*, then run `./install.sh --tunnel-token <token> --public-url https://api.example.com`.
+- **Public URL (temporary, for testing):** `./install.sh --quick-tunnel` prints a `trycloudflare.com` address.
 - **Use the Mac as an exit node too:** add `--agent-token am_enr_...` (from **Enrollment → New token**).
-- **Re-running is safe:** secrets and data are kept; it just rebuilds and restarts.
-- **Dashboard on Vercel (optional):** deploy `dashboard/` and set the backend URL in [dashboard/vercel.json](dashboard/vercel.json). Vercel forwards `/v1/*` to the Mac, so login cookies keep working.
+- **Update:** run the new package's `install.sh`; settings, keys and certificates in `/usr/local/agentmesh/etc` are kept. **Remove:** `./install.sh --uninstall` (add `--purge` to delete settings too).
+- **Logs** are in `/usr/local/agentmesh/log/`. Restart a service with `sudo launchctl kickstart -k system/com.agentmesh.control-api`.
+- **Dashboard on Vercel:** set the Mac's public URL in [dashboard/vercel.json](dashboard/vercel.json); Vercel forwards `/v1/*` to it, so login cookies keep working.
+- **Build the packages:** `scripts/build-macos-server.sh v0.6.3` (needs Go, Node and curl). The Docker-based alternative is `scripts/install/macos-server.sh`.
 
 ## 📱 Use a computer's internet on your phone (the 1-minute version)
 

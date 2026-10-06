@@ -3,4 +3,5 @@
 *.go text eol=lf
 *.service text eol=lf
 *.ps1 text eol=crlf
+Caddyfile text eol=lf
 protocols/gen/** linguist-generated=true

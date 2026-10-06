@@ -1,0 +1,73 @@
+# AgentMesh web front for the native macOS server (replaces the dashboard
+# nginx of the Docker setup). One HTTPS origin serves the dashboard, the API,
+# the exit-node relay and the agent endpoints, so a single public URL
+# (Cloudflare tunnel → https://localhost:13443) is enough for phones,
+# agents and the Vercel dashboard. @PREFIX@ is replaced by the installer.
+{
+	admin off
+	auto_https off
+	persist_config off
+	storage file_system @PREFIX@/var/caddy
+	servers {
+		protocols h1 h2
+	}
+}
+
+https://:13443 {
+	tls @PREFIX@/etc/certs/gateway.pem @PREFIX@/etc/certs/gateway-key.pem
+	request_body {
+		max_size 2MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
+	# Exit-node relay and agent endpoints → agent-gateway (TLS verified against the AgentMesh CA).
+	@gateway {
+		path /v1/relay /v1/agent/*
+	}
+	handle @gateway {
+		reverse_proxy https://127.0.0.1:18443 {
+			header_up Host agent-gateway
+			flush_interval -1
+			stream_timeout 12h
+			transport http {
+				tls_server_name agent-gateway
+				tls_trust_pool file @PREFIX@/etc/certs/ca.pem
+			}
+		}
+	}
+
+	# Public CA certificate for trust-on-first-use in the Android app.
+	handle /agentmesh-ca.pem {
+		root * @PREFIX@/etc/certs
+		rewrite * /ca.pem
+		header Content-Type application/x-pem-file
+		file_server
+	}
+
+	# REST API and live events (SSE) → control-api.
+	handle /v1/* {
+		reverse_proxy 127.0.0.1:18080 {
+			flush_interval -1
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# Dashboard (single-page app).
+	handle {
+		root * @PREFIX@/web
+		@assets path /assets/*
+		@pages not path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header @pages Cache-Control "no-cache"
+		try_files {path} /index.html
+		file_server
+	}
+}
