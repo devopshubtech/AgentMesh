@@ -15,7 +15,9 @@
 #   ./install.sh --uninstall [--purge]             stop and remove (--purge also deletes settings)
 #
 # First install asks for the dashboard admin email and password. A private
-# agentmesh-db.env (AM_DATABASE_URL=...) next to this script selects the database.
+# agentmesh-db.env next to this script can hold AM_DATABASE_URL,
+# AM_RENDEZVOUS_GITHUB_TOKEN, AM_TELEGRAM_BOT_TOKEN, AM_TELEGRAM_CHAT_ID and
+# AM_DASHBOARD_URL instead of passing them as options.
 # Services run as launchd daemons under your user account and start at boot.
 set -euo pipefail
 
@@ -44,7 +46,7 @@ while [ $# -gt 0 ]; do
     --dashboard-url)    DASH_URL=${2:?--dashboard-url needs a value}; shift 2 ;;
     --uninstall)    UNINSTALL=1; shift ;;
     --purge)        PURGE=1; shift ;;
-    -h|--help)      sed -n '3,22p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '3,24p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -105,12 +107,18 @@ set_env() { # key value
 get_env() { grep "^$1=" "$ENVF" 2>/dev/null | tail -n1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//"; }
 secret() { openssl rand -base64 24 | tr -d '+/=\n'; }
 
-if [ -z "$DATABASE_URL" ]; then
-  for f in "$HERE/agentmesh-db.env" "$HERE/../agentmesh-db.env"; do
-    [ -f "$f" ] || continue
-    DATABASE_URL=$(grep '^AM_DATABASE_URL=' "$f" | tail -n1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]\$//")
-    [ -n "$DATABASE_URL" ] && echo "using the database from $f" && break
-  done
+# Private settings file next to this script (never published): command-line
+# options win; otherwise these keys are read from it.
+PRIVATE=""
+for f in "$HERE/agentmesh-db.env" "$HERE/../agentmesh-db.env"; do [ -f "$f" ] && PRIVATE=$f && break; done
+priv() { grep "^$1=" "$PRIVATE" | tail -n1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]\$//"; }
+if [ -n "$PRIVATE" ]; then
+  echo "using private settings from $PRIVATE"
+  DATABASE_URL=${DATABASE_URL:-$(priv AM_DATABASE_URL)}
+  RDV_TOKEN=${RDV_TOKEN:-$(priv AM_RENDEZVOUS_GITHUB_TOKEN)}
+  TG_TOKEN=${TG_TOKEN:-$(priv AM_TELEGRAM_BOT_TOKEN)}
+  TG_CHAT=${TG_CHAT:-$(priv AM_TELEGRAM_CHAT_ID)}
+  DASH_URL=${DASH_URL:-$(priv AM_DASHBOARD_URL)}
 fi
 
 NEW_ADMIN_EMAIL="" NEW_ADMIN_PW="" ADMIN_PW_GENERATED=""
