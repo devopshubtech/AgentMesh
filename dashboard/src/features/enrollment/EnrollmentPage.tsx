@@ -20,7 +20,7 @@ import { Select } from '@/components/ui/select';
 import { Table, TBody, TD, TH, THead, TR, TableMessageRow } from '@/components/ui/table';
 import { RelativeTime } from '@/components/ui/time';
 import { toast } from '@/components/ui/toast-store';
-import { EXPIRY_OPTIONS, linuxInstallCommand, windowsInstallCommand } from './install';
+import { EXPIRY_OPTIONS, neverExpires, unixInstallCommand, windowsInstallCommand } from './install';
 
 function tokenState(t: EnrollmentToken): { label: string; tone: 'green' | 'gray' | 'red' | 'yellow' } {
   if (t.revoked_at) return { label: 'revoked', tone: 'red' };
@@ -154,6 +154,8 @@ function CreateTokenDialog({
 function TokenCreatedDialog({ token, onClose }: { token: CreatedEnrollmentToken | null; onClose: () => void }) {
   const config = useConfig();
   const [withCa, setWithCa] = useState(false);
+  const [exitNode, setExitNode] = useState(true);
+  const opts = { withCa, exitNode };
   const gateway = config.data?.gateway_url;
 
   return (
@@ -173,11 +175,18 @@ function TokenCreatedDialog({ token, onClose }: { token: CreatedEnrollmentToken 
           <div className="flex flex-col gap-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold">Install commands</h3>
-              <Checkbox
-                label="Include --ca-file (self-signed gateway CA)"
-                checked={withCa}
-                onChange={(e) => setWithCa(e.target.checked)}
-              />
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                <Checkbox
+                  label="Phones can use this device's internet (--enable-exit-node)"
+                  checked={exitNode}
+                  onChange={(e) => setExitNode(e.target.checked)}
+                />
+                <Checkbox
+                  label="Include --ca-file (self-signed gateway CA)"
+                  checked={withCa}
+                  onChange={(e) => setWithCa(e.target.checked)}
+                />
+              </div>
             </div>
             {config.isPending ? (
               <Spinner label="Loading gateway URL…" />
@@ -189,10 +198,13 @@ function TokenCreatedDialog({ token, onClose }: { token: CreatedEnrollmentToken 
               />
             ) : (
               <>
-                <CopyField label="Linux (run as root)" value={linuxInstallCommand(gateway, token.token, withCa)} />
+                <CopyField
+                  label="macOS / Linux (run in Terminal; asks for your password)"
+                  value={unixInstallCommand(gateway, token.token, opts)}
+                />
                 <CopyField
                   label="Windows (run in an elevated PowerShell)"
-                  value={windowsInstallCommand(gateway, token.token, withCa)}
+                  value={windowsInstallCommand(gateway, token.token, opts)}
                 />
               </>
             )}
@@ -283,7 +295,7 @@ export function EnrollmentPage() {
                     </TD>
                     <TD>{t.auto_approve ? <Badge tone="blue">yes</Badge> : <span className="text-muted">no</span>}</TD>
                     <TD className="text-muted">
-                      <RelativeTime value={t.expires_at} />
+                      {neverExpires(t.expires_at) ? 'Never' : <RelativeTime value={t.expires_at} />}
                     </TD>
                     <TD className="text-muted">
                       <RelativeTime value={t.created_at} />

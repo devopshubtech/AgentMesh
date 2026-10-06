@@ -50,6 +50,7 @@ for arch in arm64 amd64; do
   # tr: a Windows checkout may have CRLF line endings; macOS sh needs LF.
   tr -d '\r' < packaging/macos/install.sh > "$d/install.sh"
   tr -d '\r' < packaging/macos/Caddyfile > "$d/Caddyfile"
+  tr -d '\r' < packaging/macos/publicurl.sh > "$d/bin/agentmesh-publicurl"
   chmod 755 "$d/install.sh" "$d/agent/install.sh" "$d"/bin/* "$d/agent/agentmesh-agent"
   tar -C "$STAGE" -czf "$OUT/agentmesh-server_${PKGVER}_macos_${arch}.tar.gz" agentmesh-server
   echo ">> $OUT/agentmesh-server_${PKGVER}_macos_${arch}.tar.gz"

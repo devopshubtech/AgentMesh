@@ -5,7 +5,9 @@
 #   ./install.sh                                   install or update
 #   ./install.sh --public-url https://api.example.com
 #   ./install.sh --tunnel-token <token>            permanent public URL (named Cloudflare tunnel)
-#   ./install.sh --quick-tunnel                    temporary trycloudflare.com URL
+#   ./install.sh --quick-tunnel                    free trycloudflare.com URL (changes on restart; kept current)
+#   ./install.sh --rendezvous-token <github-token> publish the current URL to the app's rendezvous gist
+#                [--rendezvous-gist <id>]           (needed for 6-digit codes; token needs only the "gist" scope)
 #   ./install.sh --agent-token am_enr_...          also run this Mac's agent as an exit node
 #   ./install.sh --database-url 'postgresql://...' external Postgres (Neon: direct/unpooled URL)
 #   ./install.sh --uninstall [--purge]             stop and remove (--purge also deletes settings)
@@ -17,12 +19,14 @@ set -euo pipefail
 
 PREFIX=${AM_PREFIX:-/usr/local/agentmesh}
 LAUNCHD_DIR=${AM_LAUNCHD_DIR:-/Library/LaunchDaemons}
-SERVICES="nats control-api agent-gateway worker web tunnel"
+SERVICES="nats control-api agent-gateway worker web tunnel publicurl"
+# Rendezvous gist built into the Android app (mobile/android-control/gradle.properties).
+DEFAULT_RENDEZVOUS_GIST=9b876c950f541c735c8a817c96362ca9
 
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n>> %s\n' "$*"; }
 
-PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE=""
+PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST=""
 ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -31,9 +35,11 @@ while [ $# -gt 0 ]; do
     --quick-tunnel) QUICK_TUNNEL=1; shift ;;
     --agent-token)  AGENT_TOKEN=${2:?--agent-token needs a value}; shift 2 ;;
     --database-url) DATABASE_URL=${2:?--database-url needs a value}; shift 2 ;;
+    --rendezvous-token) RDV_TOKEN=${2:?--rendezvous-token needs a value}; shift 2 ;;
+    --rendezvous-gist)  RDV_GIST=${2:?--rendezvous-gist needs a value}; shift 2 ;;
     --uninstall)    UNINSTALL=1; shift ;;
     --purge)        PURGE=1; shift ;;
-    -h|--help)      sed -n '2,16p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '3,20p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -153,6 +159,14 @@ case "$DATABASE_URL" in *-pooler.*) die "use the direct (unpooled) connection st
 [ -n "$PUBLIC_URL" ] && set_env AGENTMESH_PUBLIC_GATEWAY_URL "$PUBLIC_URL"
 [ -n "$TUNNEL_TOKEN" ] && set_env AM_TUNNEL_TOKEN "$TUNNEL_TOKEN"
 [ -n "$QUICK_TUNNEL" ] && set_env AM_QUICK_TUNNEL 1
+if [ -n "$RDV_TOKEN" ]; then
+  RDV_GIST=${RDV_GIST:-$DEFAULT_RENDEZVOUS_GIST}
+  set_env AM_RENDEZVOUS_GITHUB_TOKEN "$RDV_TOKEN"
+  set_env AM_RENDEZVOUS_GIST_ID "$RDV_GIST"
+  # The API always returns the latest content (the raw gist URL is cached ~5 min).
+  set_env AGENTMESH_RENDEZVOUS_URL "https://api.github.com/gists/$RDV_GIST"
+  rm -f "$PREFIX/var/rendezvous-published"
+fi
 if ! grep -q '^AGENTMESH_USER_TOKEN_KEY=' "$ENVF"; then
   as_user "$PREFIX/bin/amctl" keygen | grep '^AGENTMESH_' >> "$ENVF"
   say "generated signing keys"
@@ -188,18 +202,23 @@ cmd_for() {
     worker)        echo 'exec "$P/bin/worker"' ;;
     web)           echo 'exec "$P/bin/caddy" run --config "$P/etc/Caddyfile" --adapter caddyfile' ;;
     tunnel)        echo "$TUNNEL_CMD" ;;
+    publicurl)     [ -n "$(get_env AM_QUICK_TUNNEL)" ] && [ -z "$(get_env AM_TUNNEL_TOKEN)" ] && echo 'exec "$P/bin/agentmesh-publicurl"' ;;
   esac
 }
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
 write_plist() { # service command
+  # Everything runs as the installing user, except the public-URL watcher, which
+  # restarts other services (root).
+  local who=""
+  [ "$1" = publicurl ] || who="  <key>UserName</key><string>$RUN_USER</string>
+  <key>GroupName</key><string>$RUN_GROUP</string>"
   cat > "$(plist "$1")" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>$(label "$1")</string>
-  <key>UserName</key><string>$RUN_USER</string>
-  <key>GroupName</key><string>$RUN_GROUP</string>
+$who
   <key>ProgramArguments</key>
   <array>
     <string>/bin/sh</string><string>-c</string>
@@ -235,16 +254,12 @@ done
 svc_start worker
 curl -fsSk -o /dev/null https://127.0.0.1:13443/ || echo "warning: web front not answering yet; see $LOG/web.log"
 
-if [ -n "$(get_env AM_QUICK_TUNNEL)" ] && [ -z "$(get_env AM_TUNNEL_TOKEN)" ] && [ -z "$PUBLIC_URL" ]; then
-  QUICK_URL=""
-  for _ in $(seq 1 30); do
-    QUICK_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG/tunnel.log" 2>/dev/null | tail -n1 || true)
-    [ -n "$QUICK_URL" ] && break; sleep 2
+if [ -f "$(plist publicurl)" ]; then
+  say "waiting for the public trycloudflare.com address"
+  for _ in $(seq 1 60); do
+    case "$(get_env AGENTMESH_PUBLIC_GATEWAY_URL)" in *.trycloudflare.com) break ;; esac
+    sleep 3
   done
-  if [ -n "$QUICK_URL" ]; then
-    set_env AGENTMESH_PUBLIC_GATEWAY_URL "$QUICK_URL"
-    launchctl kickstart -k "system/$(label control-api)"; launchctl kickstart -k "system/$(label agent-gateway)"
-  fi
 fi
 
 # ---- Optional: this Mac's own agent (exit node)

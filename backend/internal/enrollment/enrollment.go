@@ -77,6 +77,13 @@ func scanToken(row pgx.Row) (*Token, error) {
 	return &t, err
 }
 
+// NeverExpires as expires_in_s creates a token without an expiry; it is stored
+// as NeverExpiresAt because expires_at is NOT NULL.
+const NeverExpires = -1
+
+// NeverExpiresAt is the expires_at of a token created with NeverExpires.
+var NeverExpiresAt = time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+
 // CreateInput is the create payload.
 type CreateInput struct {
 	Description string `json:"description"`
@@ -98,8 +105,8 @@ func (s *Service) Create(ctx context.Context, a devices.Actor, in CreateInput) (
 	if in.ExpiresInS == 0 {
 		in.ExpiresInS = 86400
 	}
-	if in.ExpiresInS < 300 || in.ExpiresInS > 30*86400 {
-		v["expires_in_s"] = "must be between 300 and 2592000"
+	if in.ExpiresInS != NeverExpires && (in.ExpiresInS < 300 || in.ExpiresInS > 30*86400) {
+		v["expires_in_s"] = "must be between 300 and 2592000, or -1 for no expiry"
 	}
 	if err := v.Err(); err != nil {
 		return nil, err
@@ -110,12 +117,16 @@ func (s *Service) Create(ctx context.Context, a devices.Actor, in CreateInput) (
 	}
 	secret := tokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	id := uuid.Must(uuid.NewV7())
+	expiresAt := NeverExpiresAt
+	if in.ExpiresInS != NeverExpires {
+		expiresAt = time.Now().Add(time.Duration(in.ExpiresInS) * time.Second)
+	}
 	var out *Created
 	err := db.InTx(ctx, s.pool, func(tx pgx.Tx) error {
 		if _, err := tx.Exec(ctx, `
 			INSERT INTO enrollment_tokens (id, org_id, token_hash, description, auto_approve, max_uses, expires_at, created_by)
-			VALUES ($1, $2, $3, $4, $5, $6, now() + make_interval(secs => $7), $8)`,
-			id, a.P.OrgID, hashToken(secret), in.Description, in.AutoApprove, in.MaxUses, in.ExpiresInS, a.P.UserID); err != nil {
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			id, a.P.OrgID, hashToken(secret), in.Description, in.AutoApprove, in.MaxUses, expiresAt, a.P.UserID); err != nil {
 			return err
 		}
 		if err := audit.Record(ctx, tx, audit.Event{
