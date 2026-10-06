@@ -26,7 +26,8 @@ tar -xzf agentmesh-server_0.6.3_macos.tar.gz && cd agentmesh-server
 ./install-server.sh
 ```
 
-- **First run** builds the images, generates secrets, keys and certificates, starts everything and prints the admin login. Open **http://localhost:13000** on the Mac.
+- **First run** asks for the dashboard admin email and password (12+ characters; press Enter to generate one). It then builds the images, generates secrets, keys and certificates, and starts everything. Open **http://localhost:13000** on the Mac.
+- **External database (e.g. Neon from Vercel):** put a file named `agentmesh-db.env` next to `install-server.sh` containing `AM_DATABASE_URL=<direct/unpooled connection string>`, or answer the installer's database question. Never commit or publish that file; it is git-ignored. Tables are created automatically on first start.
 - **Public URL (permanent):** create a named tunnel in Cloudflare Zero Trust with service `https://dashboard:443` and *No TLS Verify*, then run `./install-server.sh --tunnel-token <token> --public-url https://api.example.com`.
 - **Public URL (temporary, for testing):** `./install-server.sh --quick-tunnel` prints a `trycloudflare.com` address.
 - **Use the Mac as an exit node too:** add `--agent-token am_enr_...` (from **Enrollment → New token**).

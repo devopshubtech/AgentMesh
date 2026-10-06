@@ -16,7 +16,9 @@ name: agentmesh
 x-backend-env: &backend-env
   AGENTMESH_ENV: dev
   AGENTMESH_LOG_LEVEL: ${AM_LOG_LEVEL:-info}
-  AGENTMESH_DATABASE_URL: postgres://agentmesh:${AM_PG_PASSWORD}@postgres:5432/agentmesh?sslmode=disable
+  # AM_DATABASE_URL points the backend at an external Postgres (e.g. Neon via
+  # Vercel; use its direct/unpooled URL). Unset = the bundled postgres service.
+  AGENTMESH_DATABASE_URL: ${AM_DATABASE_URL:-postgres://agentmesh:${AM_PG_PASSWORD}@postgres:5432/agentmesh?sslmode=disable}
   AGENTMESH_NATS_URL: nats://nats:4222
   AGENTMESH_PUBLIC_GATEWAY_URL: ${AM_PUBLIC_GATEWAY_URL:-https://localhost:18443}
 

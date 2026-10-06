@@ -7,6 +7,10 @@
 #   ./install-server.sh --tunnel-token <cloudflare-tunnel-token>   permanent URL (named tunnel)
 #   ./install-server.sh --quick-tunnel                   temporary trycloudflare.com URL
 #   ./install-server.sh --agent-token am_enr_...         also install this Mac's agent as an exit node
+#   ./install-server.sh --database-url 'postgresql://...'  use an external Postgres (e.g. Neon/Vercel, unpooled URL)
+#
+# First install asks for the admin email and password. A private agentmesh-db.env
+# (AM_DATABASE_URL=...) next to this script selects an external database.
 #
 # Safe to re-run: existing secrets, keys, certificates and data are kept.
 # Needs Docker Desktop (or OrbStack); no Go or Node toolchain.
@@ -15,14 +19,15 @@ set -euo pipefail
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n>> %s\n' "$*"; }
 
-PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN=""
+PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --public-url)   PUBLIC_URL=${2:?--public-url needs a value}; shift 2 ;;
     --tunnel-token) TUNNEL_TOKEN=${2:?--tunnel-token needs a value}; shift 2 ;;
     --quick-tunnel) QUICK_TUNNEL=1; shift ;;
     --agent-token)  AGENT_TOKEN=${2:?--agent-token needs a value}; shift 2 ;;
-    -h|--help)      sed -n '2,13p' "$0"; exit 0 ;;
+    --database-url) DATABASE_URL=${2:?--database-url needs a value}; shift 2 ;;
+    -h|--help)      sed -n '2,17p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -52,23 +57,59 @@ docker compose version >/dev/null 2>&1 || die "docker compose v2 is required (bu
 
 # ---- .env (secrets are generated once and kept)
 secret() { openssl rand -base64 24 | tr -d '+/=\n'; }
-set_env() { # key value: replace or append in .env
+set_env() { # key value: replace or append in .env; single quotes = no $ interpolation by compose
   local tmp; tmp=$(mktemp)
   grep -v "^$1=" "$DOCKER/.env" > "$tmp" || true
-  printf '%s=%s\n' "$1" "$2" >> "$tmp"
+  printf "%s='%s'\n" "$1" "$2" >> "$tmp"
   cat "$tmp" > "$DOCKER/.env" && rm -f "$tmp"
 }
-NEW_ADMIN_PW=""
+get_env() { grep "^$1=" "$DOCKER/.env" 2>/dev/null | tail -n1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//"; }
+
+# Database connection kept out of the public package: a private agentmesh-db.env
+# (AM_DATABASE_URL=...) placed next to this script is picked up automatically.
+if [ -z "$DATABASE_URL" ]; then
+  for f in "$HERE/agentmesh-db.env" "$ROOT/agentmesh-db.env"; do
+    if [ -f "$f" ]; then
+      DATABASE_URL=$(grep '^AM_DATABASE_URL=' "$f" | tail -n1 | cut -d= -f2- | sed -e "s/^['\"]//" -e "s/['\"]\$//")
+      [ -n "$DATABASE_URL" ] && echo "using the database from $f" && break
+    fi
+  done
+fi
+
+NEW_ADMIN_EMAIL="" NEW_ADMIN_PW="" ADMIN_PW_GENERATED=""
 if [ ! -f "$DOCKER/.env" ]; then
-  NEW_ADMIN_PW=$(secret)
-  sed -e "s|^AM_PG_PASSWORD=.*|AM_PG_PASSWORD=$(secret)|" \
-      -e "s|^AM_ADMIN_PASSWORD=.*|AM_ADMIN_PASSWORD=$NEW_ADMIN_PW|" \
-      "$DOCKER/.env.example" > "$DOCKER/.env"
+  NEW_ADMIN_EMAIL=admin@agentmesh.local
+  if [ -t 0 ]; then
+    say "first install: set the dashboard admin account"
+    read -r -p "  Admin email (username) [admin@agentmesh.local]: " ans
+    [ -n "$ans" ] && NEW_ADMIN_EMAIL=$ans
+    case "$NEW_ADMIN_EMAIL" in *@*.*) ;; *) die "admin email must look like name@example.com" ;; esac
+    while :; do
+      read -r -s -p "  Admin password (12+ characters, Enter = generate one): " NEW_ADMIN_PW; echo
+      [ -z "$NEW_ADMIN_PW" ] && break
+      case "$NEW_ADMIN_PW" in *"'"*) echo "  the password cannot contain a single quote ('), try again"; continue ;; esac
+      [ ${#NEW_ADMIN_PW} -ge 12 ] || { echo "  too short (${#NEW_ADMIN_PW} characters), try again"; continue; }
+      read -r -s -p "  Repeat the password: " again; echo
+      [ "$again" = "$NEW_ADMIN_PW" ] && break
+      echo "  passwords do not match, try again"
+    done
+    if [ -z "$DATABASE_URL" ]; then
+      read -r -p "  External Postgres URL, e.g. Neon (Enter = database on this Mac): " DATABASE_URL
+    fi
+  fi
+  [ -n "$NEW_ADMIN_PW" ] || { NEW_ADMIN_PW=$(secret); ADMIN_PW_GENERATED=1; }
+  cp "$DOCKER/.env.example" "$DOCKER/.env"
   chmod 600 "$DOCKER/.env"
+  set_env AM_PG_PASSWORD "$(secret)"
+  set_env AM_ADMIN_EMAIL "$NEW_ADMIN_EMAIL"
+  set_env AM_ADMIN_PASSWORD "$NEW_ADMIN_PW"
   say "created $DOCKER/.env"
 fi
+case "$DATABASE_URL" in ""|postgres://*|postgresql://*) ;; *) die "database URL must start with postgres:// or postgresql://" ;; esac
+case "$DATABASE_URL" in *-pooler.*) die "use the direct (unpooled) connection string, not the -pooler one" ;; esac
 [ -n "$PUBLIC_URL" ] && set_env AM_PUBLIC_GATEWAY_URL "$PUBLIC_URL"
 [ -n "$TUNNEL_TOKEN" ] && set_env AM_TUNNEL_TOKEN "$TUNNEL_TOKEN"
+[ -n "$DATABASE_URL" ] && set_env AM_DATABASE_URL "$DATABASE_URL"
 
 # ---- Images (built here for this Mac's CPU)
 say "building images (first run takes a few minutes)"
@@ -92,7 +133,7 @@ fi
 
 # ---- Start
 PROFILES=()
-if grep -q '^AM_TUNNEL_TOKEN=.' "$DOCKER/.env"; then PROFILES+=(--profile named)
+if [ -n "$(get_env AM_TUNNEL_TOKEN)" ]; then PROFILES+=(--profile named)
 elif [ -n "$QUICK_TUNNEL" ]; then PROFILES+=(--profile public); fi
 say "starting AgentMesh"
 "${COMPOSE[@]}" "${PROFILES[@]+"${PROFILES[@]}"}" up -d
@@ -106,7 +147,7 @@ done
   || die "control-api did not become healthy; check: docker compose -f $DOCKER/docker-compose.yml logs control-api"
 
 QUICK_URL=""
-if [ -n "$QUICK_TUNNEL" ] && ! grep -q '^AM_TUNNEL_TOKEN=.' "$DOCKER/.env"; then
+if [ -n "$QUICK_TUNNEL" ] && ! [ -n "$(get_env AM_TUNNEL_TOKEN)" ]; then
   for _ in $(seq 1 30); do
     QUICK_URL=$("${COMPOSE[@]}" logs tunnel 2>/dev/null | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -n1 || true)
     [ -n "$QUICK_URL" ] && break; sleep 2
@@ -125,18 +166,27 @@ if [ -n "$AGENT_TOKEN" ]; then
 fi
 
 # ---- Summary
-PUB=$(grep '^AM_PUBLIC_GATEWAY_URL=' "$DOCKER/.env" | tail -n1 | cut -d= -f2-)
+PUB=$(get_env AM_PUBLIC_GATEWAY_URL)
+DB=$(get_env AM_DATABASE_URL)
 echo
 echo "=============================================================="
 echo " AgentMesh server is running"
 echo "   Dashboard (this Mac):  http://localhost:13000"
 [ -n "$LAN_IP" ] && echo "   Dashboard (your LAN):  https://$LAN_IP:13443   (self-signed CA)"
 echo "   Public URL:            ${PUB:-not set}"
-if [ -n "$NEW_ADMIN_PW" ]; then
-  echo "   Admin login:           admin@agentmesh.local / $NEW_ADMIN_PW"
+if [ -n "$DB" ]; then
+  echo "   Database:              external ($(echo "$DB" | sed -E 's|^[a-z]+://[^@]*@([^/:?]+).*|\1|'))"
 else
-  echo "   Admin login:           see AM_ADMIN_EMAIL / AM_ADMIN_PASSWORD in $DOCKER/.env"
+  echo "   Database:              on this Mac (Docker volume pgdata)"
 fi
+if [ -n "$ADMIN_PW_GENERATED" ]; then
+  echo "   Admin login:           $NEW_ADMIN_EMAIL / $NEW_ADMIN_PW   (generated; save it)"
+elif [ -n "$NEW_ADMIN_PW" ]; then
+  echo "   Admin login:           $NEW_ADMIN_EMAIL / the password you just set"
+else
+  echo "   Admin login:           AM_ADMIN_EMAIL / AM_ADMIN_PASSWORD in $DOCKER/.env"
+fi
+[ -n "$DB" ] && echo "   (The admin is created only if the database has no users yet; an existing login stays.)"
 echo
 echo " Keep it running:"
 echo "   - Docker Desktop → Settings → General → 'Start Docker Desktop when you sign in'"
