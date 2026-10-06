@@ -13,6 +13,7 @@
 >
 > **macOS install:** `tar -xzf agentmesh-agent_*_darwin_*.tar.gz && sudo ./install.sh --server https://<gateway>:18443 --token am_enr_...`
 > **Android install:** open the APK link on the phone and allow "Install unknown apps" when asked.
+> **Need help?** Report a problem or ask a question on the [Issues page](https://github.com/devopshubtech/AgentMesh/issues).
 
 ## 📱 Use a computer's internet on your phone (the 1-minute version)
 
