@@ -8,6 +8,8 @@
 #   ./install.sh --quick-tunnel                    free trycloudflare.com URL (changes on restart; kept current)
 #   ./install.sh --rendezvous-token <github-token> publish the current URL to the app's rendezvous gist
 #                [--rendezvous-gist <id>]           (needed for 6-digit codes; token needs only the "gist" scope)
+#   ./install.sh --telegram-token <bot-token> --telegram-chat <chat-id> [--dashboard-url <url>]
+#                                                  send the new address to Telegram whenever it changes
 #   ./install.sh --agent-token am_enr_...          also run this Mac's agent as an exit node
 #   ./install.sh --database-url 'postgresql://...' external Postgres (Neon: direct/unpooled URL)
 #   ./install.sh --uninstall [--purge]             stop and remove (--purge also deletes settings)
@@ -26,7 +28,7 @@ DEFAULT_RENDEZVOUS_GIST=9b876c950f541c735c8a817c96362ca9
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n>> %s\n' "$*"; }
 
-PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST=""
+PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST="" TG_TOKEN="" TG_CHAT="" DASH_URL=""
 ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -37,9 +39,12 @@ while [ $# -gt 0 ]; do
     --database-url) DATABASE_URL=${2:?--database-url needs a value}; shift 2 ;;
     --rendezvous-token) RDV_TOKEN=${2:?--rendezvous-token needs a value}; shift 2 ;;
     --rendezvous-gist)  RDV_GIST=${2:?--rendezvous-gist needs a value}; shift 2 ;;
+    --telegram-token)   TG_TOKEN=${2:?--telegram-token needs a value}; shift 2 ;;
+    --telegram-chat)    TG_CHAT=${2:?--telegram-chat needs a value}; shift 2 ;;
+    --dashboard-url)    DASH_URL=${2:?--dashboard-url needs a value}; shift 2 ;;
     --uninstall)    UNINSTALL=1; shift ;;
     --purge)        PURGE=1; shift ;;
-    -h|--help)      sed -n '3,20p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '3,22p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -167,6 +172,10 @@ if [ -n "$RDV_TOKEN" ]; then
   set_env AGENTMESH_RENDEZVOUS_URL "https://api.github.com/gists/$RDV_GIST"
   rm -f "$PREFIX/var/rendezvous-published"
 fi
+[ -n "$TG_TOKEN" ] && set_env AM_TELEGRAM_BOT_TOKEN "$TG_TOKEN"
+[ -n "$TG_CHAT" ] && set_env AM_TELEGRAM_CHAT_ID "$TG_CHAT"
+[ -n "$DASH_URL" ] && set_env AM_DASHBOARD_URL "$DASH_URL"
+{ [ -n "$TG_TOKEN" ] || [ -n "$TG_CHAT" ]; } && rm -f "$PREFIX/var/telegram-notified"
 if ! grep -q '^AGENTMESH_USER_TOKEN_KEY=' "$ENVF"; then
   as_user "$PREFIX/bin/amctl" keygen | grep '^AGENTMESH_' >> "$ENVF"
   say "generated signing keys"

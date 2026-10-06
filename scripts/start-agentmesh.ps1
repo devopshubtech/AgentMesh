@@ -7,7 +7,18 @@
 # looks it up there whenever the old address stops answering.
 #
 #   powershell -ExecutionPolicy Bypass -File scripts\start-agentmesh.ps1
-$ErrorActionPreference = "Stop"
+#
+# Optional settings in infrastructure\docker\.env:
+#   AM_RENDEZVOUS_GITHUB_TOKEN  GitHub token (gist scope) for the rendezvous gist;
+#                               needed when run by the watchdog task, where Git
+#                               Credential Manager cannot show its sign-in window
+#   AM_TELEGRAM_BOT_TOKEN, AM_TELEGRAM_CHAT_ID
+#                               send the new address to Telegram when it changes
+#
+# "Continue", not "Stop": docker writes progress to stderr, and when the output is
+# redirected (the watchdog task logs to a file) Windows PowerShell 5.1 turns that
+# into a terminating error. Failures are checked via $LASTEXITCODE instead.
+$ErrorActionPreference = "Continue"
 $root = Split-Path -Parent $PSScriptRoot
 $compose = @("-f", (Join-Path $root "infrastructure\docker\docker-compose.yml"), "--profile", "public", "--profile", "exit")
 $envFile = Join-Path $root "infrastructure\docker\.env"
@@ -35,8 +46,9 @@ if ($LASTEXITCODE -ne 0) {
 
 # 2. Services
 Write-Host "Starting AgentMesh services..."
-docker compose @compose up -d --wait postgres nats control-api agent-gateway worker dashboard | Out-Null
-docker compose @compose up -d tunnel exit-agent | Out-Null
+docker compose @compose up -d --wait postgres nats control-api agent-gateway worker dashboard 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "AgentMesh services did not start; check: docker compose ps" }
+docker compose @compose up -d tunnel exit-agent 2>&1 | Out-Null
 
 # 3. Current public URL. Free quick tunnels can be dropped by Cloudflare
 #    (e.g. after the PC slept); then cloudflared keeps retrying a dead address,
@@ -53,7 +65,7 @@ function Get-TunnelUrl {
 }
 function Test-PublicUrl($u) {
     for ($i = 0; $i -lt 10; $i++) {
-        try { if ((Invoke-WebRequest -UseBasicParsing "$u/agentmesh-ca.pem" -TimeoutSec 8).StatusCode -eq 200) { return $true } } catch { }
+        try { if ((Invoke-WebRequest -ErrorAction Stop -UseBasicParsing "$u/agentmesh-ca.pem" -TimeoutSec 8).StatusCode -eq 200) { return $true } } catch { }
         Start-Sleep 3
     }
     return $false
@@ -61,7 +73,7 @@ function Test-PublicUrl($u) {
 $url = Get-TunnelUrl
 if (-not $url -or -not (Test-PublicUrl $url)) {
     Write-Host "Public tunnel is not reachable; creating a new one..."
-    docker compose @compose up -d --force-recreate tunnel | Out-Null
+    docker compose @compose up -d --force-recreate tunnel 2>&1 | Out-Null
     Start-Sleep 5
     $url = Get-TunnelUrl
     if (-not $url -or -not (Test-PublicUrl $url)) { throw "Tunnel did not come up; check: docker compose logs tunnel" }
@@ -69,15 +81,15 @@ if (-not $url -or -not (Test-PublicUrl $url)) {
 
 # 4. Rendezvous gist (private) with the current address
 $gistId = Get-EnvValue "AM_RENDEZVOUS_GIST_ID"
-$token = ""
-try {
+$token = Get-EnvValue "AM_RENDEZVOUS_GITHUB_TOKEN"
+if (-not $token) { try {
     # PowerShell 5 pipes to native programs with CRLF/BOM, which git rejects; feed a file via cmd instead.
     $credIn = Join-Path $env:TEMP "agentmesh-cred-query.txt"
     # With several GitHub accounts saved, Git Credential Manager wants to show an
     # account picker (impossible here), so ask for the gist owner's account by name.
     $ghUser = Get-EnvValue "AM_RENDEZVOUS_GITHUB_USER"
     if (-not $ghUser -and $gistId) {
-        try { $ghUser = (Invoke-RestMethod "https://api.github.com/gists/$gistId").owner.login } catch { }
+        try { $ghUser = (Invoke-RestMethod -ErrorAction Stop "https://api.github.com/gists/$gistId").owner.login } catch { }
         if ($ghUser) { Set-EnvValue "AM_RENDEZVOUS_GITHUB_USER" $ghUser }
     }
     $query = "protocol=https`nhost=github.com`n"
@@ -86,7 +98,7 @@ try {
     $out = cmd /c "set GIT_TERMINAL_PROMPT=0&& git credential fill < `"$credIn`" 2>nul"
     Remove-Item $credIn -ErrorAction SilentlyContinue
     $token = (($out | Where-Object { $_ -like "password=*" }) -replace "^password=", "") | Select-Object -First 1
-} catch { $token = "" }
+} catch { $token = "" } }
 if ($token) {
     $h = @{ Authorization = "Bearer $token"; Accept = "application/vnd.github+json" }
     $content = @{ url = $url; updated = (Get-Date).ToUniversalTime().ToString("o") } | ConvertTo-Json -Compress
@@ -96,14 +108,14 @@ if ($token) {
         if (-not $gistId) {
             # Reuse this GitHub account's existing AgentMesh gist (e.g. set up on another
             # computer): the phone app has that address built in for pairing codes.
-            $mine = Invoke-RestMethod -Headers $h "https://api.github.com/gists?per_page=100"
+            $mine = Invoke-RestMethod -ErrorAction Stop -Headers $h "https://api.github.com/gists?per_page=100"
             $old = $mine | Where-Object { $_.files.PSObject.Properties.Name -contains "agentmesh-endpoint.json" } | Select-Object -First 1
             if ($old) { $gistId = $old.id; Set-EnvValue "AM_RENDEZVOUS_GIST_ID" $gistId }
         }
         if ($gistId) {
-            $g = Invoke-RestMethod -Method Patch -Headers $h -ContentType "application/json" -Body $body "https://api.github.com/gists/$gistId"
+            $g = Invoke-RestMethod -ErrorAction Stop -Method Patch -Headers $h -ContentType "application/json" -Body $body "https://api.github.com/gists/$gistId"
         } else {
-            $g = Invoke-RestMethod -Method Post -Headers $h -ContentType "application/json" -Body $body "https://api.github.com/gists"
+            $g = Invoke-RestMethod -ErrorAction Stop -Method Post -Headers $h -ContentType "application/json" -Body $body "https://api.github.com/gists"
             Set-EnvValue "AM_RENDEZVOUS_GIST_ID" $g.id
         }
         # The API URL always returns the latest content (the raw URL is cached ~5 min).
@@ -113,7 +125,22 @@ if ($token) {
 
 # 5. Point the server at the current address (control-api is only recreated if its settings changed)
 if ((Get-EnvValue "AM_PUBLIC_GATEWAY_URL") -ne $url) { Set-EnvValue "AM_PUBLIC_GATEWAY_URL" $url }
-docker compose @compose up -d --wait control-api | Out-Null
+docker compose @compose up -d --wait control-api agent-gateway 2>&1 | Out-Null
+
+# 5b. Telegram: send the address when it has changed since the last message
+$tgToken = Get-EnvValue "AM_TELEGRAM_BOT_TOKEN"
+$tgChat = Get-EnvValue "AM_TELEGRAM_CHAT_ID"
+if ($tgToken -and $tgChat -and (Get-EnvValue "AM_TELEGRAM_LAST_URL") -ne $url) {
+    $text = "AgentMesh server address ($env:COMPUTERNAME):`n$url"
+    $dash = Get-EnvValue "AM_DASHBOARD_URL"
+    if ($dash) { $text += "`nDashboard: $dash" }
+    try {
+        Invoke-RestMethod -ErrorAction Stop -Method Post "https://api.telegram.org/bot$tgToken/sendMessage" `
+            -Body @{ chat_id = $tgChat; text = $text; disable_web_page_preview = "true" } | Out-Null
+        Set-EnvValue "AM_TELEGRAM_LAST_URL" $url
+        Write-Host "Sent the address to Telegram."
+    } catch { Write-Warning "Could not send the Telegram message: $($_.Exception.Message)" }
+}
 
 # 6. This computer's own agent (shows it online in the dashboard). Runs from
 #    the dev state dir when it was enrolled that way and no service is installed.

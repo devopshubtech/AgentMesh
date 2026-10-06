@@ -5,10 +5,11 @@
 #     pairing codes and install commands use it) and restarts the API/gateway;
 #   - publishes it to the rendezvous gist the Android app looks up, so typed
 #     6-digit codes and older QR codes find this server;
+#   - sends the new address to Telegram (optional);
 #   - restarts the tunnel when Cloudflare has dropped it.
 # Runs as root under launchd (com.agentmesh.publicurl); installed by install.sh.
 P=${AM_PREFIX:-/usr/local/agentmesh}
-ENVF="$P/etc/agentmesh.env" TLOG="$P/log/tunnel.log" STATE="$P/var/rendezvous-published"
+ENVF="$P/etc/agentmesh.env" TLOG="$P/log/tunnel.log" STATE="$P/var/rendezvous-published" TGSTATE="$P/var/telegram-notified"
 
 get_env() { grep "^$1=" "$ENVF" 2>/dev/null | tail -n1 | cut -d= -f2- | sed -e "s/^'//" -e "s/'\$//"; }
 set_env() { # rewrite in place so the file keeps its owner and mode
@@ -32,6 +33,23 @@ publish() { # url → rendezvous gist (same JSON as scripts/start-agentmesh.ps1)
   fi
 }
 
+notify() { # url → Telegram (AM_TELEGRAM_BOT_TOKEN / AM_TELEGRAM_CHAT_ID), once per address
+  bot=$(get_env AM_TELEGRAM_BOT_TOKEN) chat=$(get_env AM_TELEGRAM_CHAT_ID)
+  [ -n "$bot" ] && [ -n "$chat" ] || return 0
+  [ "$(cat "$TGSTATE" 2>/dev/null)" = "$1" ] && return 0
+  text="AgentMesh server address ($(hostname -s)):
+$1"
+  dash=$(get_env AM_DASHBOARD_URL)
+  [ -n "$dash" ] && text="$text
+Dashboard: $dash"
+  if curl -fsS -o /dev/null -m 20 "https://api.telegram.org/bot$bot/sendMessage" \
+       --data-urlencode "chat_id=$chat" --data-urlencode "text=$text" -d disable_web_page_preview=true; then
+    echo "$1" > "$TGSTATE"; log "sent the address to Telegram"
+  else
+    log "could not send the Telegram message (check AM_TELEGRAM_BOT_TOKEN / AM_TELEGRAM_CHAT_ID)"
+  fi
+}
+
 misses=0
 while :; do
   url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TLOG" 2>/dev/null | tail -n1)
@@ -44,6 +62,7 @@ while :; do
       launchctl kickstart -k system/com.agentmesh.agent-gateway
     fi
     publish "$url"
+    notify "$url"
   elif [ -n "$url" ]; then
     misses=$((misses + 1))
     if [ "$misses" -ge 9 ]; then # ~3 minutes unreachable: Cloudflare dropped the quick tunnel
