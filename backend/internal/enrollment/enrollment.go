@@ -330,3 +330,49 @@ func (s *Service) Enroll(ctx context.Context, req agentapi.EnrollRequest, ip, re
 	s.bus.PublishEvent(out.OrgID, bus.EventDeviceStatus, devices.StatusEvent{DeviceID: out.DeviceID, Status: out.Status, Connectivity: devices.Offline})
 	return out, nil
 }
+
+// ErrNoAdmin means there is no active super admin to own an installer token.
+var ErrNoAdmin = errors.New("no active super admin exists yet; start control-api once so it creates the admin")
+
+// CreateLocalToken issues the token the server installer uses to enroll the
+// server machine itself as an exit node (amctl local-enroll-token): single use,
+// auto-approved, valid for 15 minutes, owned by the oldest active super admin.
+func CreateLocalToken(ctx context.Context, pool *pgxpool.Pool, description string) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	secret := tokenPrefix + base64.RawURLEncoding.EncodeToString(raw)
+	id := uuid.Must(uuid.NewV7())
+	err := db.InTx(ctx, pool, func(tx pgx.Tx) error {
+		var owner, orgID uuid.UUID
+		err := tx.QueryRow(ctx, `
+			SELECT u.id, u.org_id FROM users u
+			JOIN user_roles ur ON ur.user_id = u.id
+			JOIN roles r ON r.id = ur.role_id
+			WHERE r.name = 'super_admin' AND u.status = 'active'
+			ORDER BY u.created_at LIMIT 1`).Scan(&owner, &orgID)
+		if db.IsNoRows(err) {
+			return ErrNoAdmin
+		}
+		if err != nil {
+			return err
+		}
+		one := 1
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO enrollment_tokens (id, org_id, token_hash, description, auto_approve, max_uses, expires_at, created_by)
+			VALUES ($1, $2, $3, $4, true, $5, now() + interval '15 minutes', $6)`,
+			id, orgID, hashToken(secret), description, one, owner); err != nil {
+			return err
+		}
+		return audit.Record(ctx, tx, audit.Event{
+			OrgID: orgID, ActorType: audit.ActorSystem, ActorLabel: "amctl local-enroll-token", Action: "enrollment_token.create",
+			TargetType: "enrollment_token", TargetID: &id,
+			Details: map[string]any{"description": description, "auto_approve": true, "max_uses": 1, "expires_in_s": 900},
+		})
+	})
+	if err != nil {
+		return "", err
+	}
+	return secret, nil
+}

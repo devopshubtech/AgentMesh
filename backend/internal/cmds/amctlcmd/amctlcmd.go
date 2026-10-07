@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/enfec/agentmesh/backend/internal/enrollment"
 	"github.com/enfec/agentmesh/backend/internal/platform/db"
 	"github.com/enfec/agentmesh/backend/internal/platform/keys"
 	"github.com/enfec/agentmesh/backend/internal/platform/logging"
@@ -37,6 +38,8 @@ Usage:
                                        create a local CA and gateway TLS certificate
   amctl migrate up|status              apply / show migrations (uses AGENTMESH_DATABASE_URL)
   amctl set-admin                      create a super admin, or reset its password if the email exists
+  amctl local-enroll-token [DESC]      print a single-use, auto-approved 15-minute enrollment token
+                                       (the server installer uses it to make this machine an exit node)
                                        (AGENTMESH_ADMIN_EMAIL, AGENTMESH_ADMIN_PASSWORD, AGENTMESH_DATABASE_URL)
   amctl health URL                     exit 0 if URL answers 200 (container health checks)
 `
@@ -72,6 +75,8 @@ func Main() {
 		err = keygen()
 	case "dev-certs":
 		err = devCerts(os.Args[2:])
+	case "local-enroll-token":
+		err = localEnrollToken(os.Args[2:])
 	case "set-admin":
 		err = setAdmin()
 	case "migrate":
@@ -228,6 +233,29 @@ func loadCA(dir string) (*ecdsa.PrivateKey, *x509.Certificate, bool, error) {
 		return nil, nil, false, err
 	}
 	return key, cert, true, nil
+}
+
+func localEnrollToken(args []string) error {
+	url := os.Getenv("AGENTMESH_DATABASE_URL")
+	if url == "" {
+		return fmt.Errorf("AGENTMESH_DATABASE_URL is not set")
+	}
+	desc := "This server (installer)"
+	if len(args) > 0 {
+		desc = strings.Join(args, " ")
+	}
+	ctx := context.Background()
+	pool, err := db.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	secret, err := enrollment.CreateLocalToken(ctx, pool, desc)
+	if err != nil {
+		return err
+	}
+	fmt.Println(secret)
+	return nil
 }
 
 // setAdmin reads the credentials from the environment, not argv, so the

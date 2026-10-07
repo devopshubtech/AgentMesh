@@ -2,15 +2,18 @@
 # shellcheck disable=SC2016  # service command strings are expanded later, by sh under launchd
 # AgentMesh server, native macOS install (no Docker) - e.g. a Mac mini.
 #
-#   ./install.sh                                   install or update
+#   ./install.sh                                   install or update (asks only for the database
+#                                                  URL and the admin login; this Mac becomes the exit
+#                                                  node and gets a free public URL automatically)
 #   ./install.sh --public-url https://api.example.com
 #   ./install.sh --tunnel-token <token>            permanent public URL (named Cloudflare tunnel)
-#   ./install.sh --quick-tunnel                    free trycloudflare.com URL (changes on restart; kept current)
+#   ./install.sh --no-tunnel                       no public URL (LAN only); default is a free
+#                                                  trycloudflare.com URL, kept current when it changes
+#   ./install.sh --no-exit-node                    do not make this Mac the exit node
 #   ./install.sh --rendezvous-token <github-token> publish the current URL to the app's rendezvous gist
 #                [--rendezvous-gist <id>]           (needed for 6-digit codes; token needs only the "gist" scope)
 #   ./install.sh --telegram-token <bot-token> --telegram-chat <chat-id> [--dashboard-url <url>]
 #                                                  send the new address to Telegram whenever it changes
-#   ./install.sh --agent-token am_enr_...          also run this Mac's agent as an exit node
 #   ./install.sh --database-url 'postgresql://...' external Postgres (Neon: direct/unpooled URL)
 #   ./install.sh --set-admin                       set a new dashboard admin email / password
 #   ./install.sh --uninstall [--purge]             stop and remove (--purge also deletes settings)
@@ -32,13 +35,15 @@ DEFAULT_RENDEZVOUS_GIST=9b876c950f541c735c8a817c96362ca9
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n>> %s\n' "$*"; }
 
-PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST="" TG_TOKEN="" TG_CHAT="" DASH_URL="" SET_ADMIN=""
+PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST="" TG_TOKEN="" TG_CHAT="" DASH_URL="" SET_ADMIN="" NO_TUNNEL="" NO_EXIT=""
 ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
     --public-url)   PUBLIC_URL=${2:?--public-url needs a value}; shift 2 ;;
     --tunnel-token) TUNNEL_TOKEN=${2:?--tunnel-token needs a value}; shift 2 ;;
-    --quick-tunnel) QUICK_TUNNEL=1; shift ;;
+    --quick-tunnel) QUICK_TUNNEL=1; shift ;; # the default; kept for older instructions
+    --no-tunnel)    NO_TUNNEL=1; shift ;;
+    --no-exit-node) NO_EXIT=1; shift ;;
     --agent-token)  AGENT_TOKEN=${2:?--agent-token needs a value}; shift 2 ;;
     --database-url) DATABASE_URL=${2:?--database-url needs a value}; shift 2 ;;
     --rendezvous-token) RDV_TOKEN=${2:?--rendezvous-token needs a value}; shift 2 ;;
@@ -49,7 +54,7 @@ while [ $# -gt 0 ]; do
     --uninstall)    UNINSTALL=1; shift ;;
     --purge)        PURGE=1; shift ;;
     --set-admin)    SET_ADMIN=1; shift ;;
-    -h|--help)      sed -n '3,25p' "$0"; exit 0 ;;
+    -h|--help)      sed -n '3,27p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -199,7 +204,9 @@ case "$DATABASE_URL" in *-pooler.*) die "use the direct (unpooled) connection st
 [ -n "$DATABASE_URL" ] && set_env AGENTMESH_DATABASE_URL "$DATABASE_URL"
 [ -n "$PUBLIC_URL" ] && set_env AGENTMESH_PUBLIC_GATEWAY_URL "$PUBLIC_URL"
 [ -n "$TUNNEL_TOKEN" ] && set_env AM_TUNNEL_TOKEN "$TUNNEL_TOKEN"
-[ -n "$QUICK_TUNNEL" ] && set_env AM_QUICK_TUNNEL 1
+# Free public URL by default (like the Windows setup), unless a named tunnel is set.
+if [ -n "$NO_TUNNEL" ]; then set_env AM_QUICK_TUNNEL ""
+elif [ -n "$QUICK_TUNNEL" ] || [ -z "$(get_env AM_TUNNEL_TOKEN)" ]; then set_env AM_QUICK_TUNNEL 1; fi
 if [ -n "$RDV_TOKEN" ]; then
   RDV_GIST=${RDV_GIST:-$DEFAULT_RENDEZVOUS_GIST}
   set_env AM_RENDEZVOUS_GITHUB_TOKEN "$RDV_TOKEN"
@@ -314,11 +321,25 @@ if [ -f "$(plist publicurl)" ]; then
   done
 fi
 
-# ---- Optional: this Mac's own agent (exit node)
-if [ -n "$AGENT_TOKEN" ]; then
-  say "installing this Mac's agent"
+# ---- This Mac as the exit node (what phones connect to), like the Windows setup's
+# exit agent. Enrolled automatically with a single-use token from this server.
+AGENT_PLIST=${AM_AGENT_PLIST:-/Library/LaunchDaemons/io.agentmesh.agent.plist}
+AGENT_CONF="${AM_AGENT_STATE:-/Library/Application Support/AgentMesh}/agent.json"
+if [ -n "$NO_EXIT" ]; then
+  : # --no-exit-node
+elif [ -z "$AGENT_TOKEN" ] && [ -f "$AGENT_PLIST" ] && grep -q '"allow_exit_node": *true' "$AGENT_CONF" 2>/dev/null \
+     && grep -q '127.0.0.1:18443' "$AGENT_CONF" 2>/dev/null; then
+  say "this Mac is already the exit node"
+else
+  say "making this Mac the exit node (phones use its internet)"
+  if [ -z "$AGENT_TOKEN" ]; then
+    AGENT_TOKEN=$(as_user env AGENTMESH_DATABASE_URL="$(get_env AGENTMESH_DATABASE_URL)" \
+      "$PREFIX/bin/amctl" local-enroll-token "$(hostname -s) (AgentMesh server)") \
+      || die "could not create an enrollment token for this Mac"
+  fi
   sh "$HERE/agent/install.sh" --server https://127.0.0.1:18443 --token "$AGENT_TOKEN" \
-    --ca-file "$ETC/certs/ca.pem" --enable-exit-node
+    --ca-file "$ETC/certs/ca.pem" --enable-exit-node --force \
+    || die "could not install this Mac's agent; see the message above"
 fi
 
 DB=$(get_env AGENTMESH_DATABASE_URL)
