@@ -403,3 +403,59 @@ func EnsureBootstrapAdmin(ctx context.Context, pool *pgxpool.Pool, email, passwo
 		})
 	})
 }
+
+// SetAdmin is the operator's way back in (amctl set-admin, run on the server):
+// it makes email a super admin with the given password. A new email creates the
+// user; an existing one gets the new password, is re-enabled, is made super
+// admin and has its sessions signed out. Reports whether the user was created.
+func SetAdmin(ctx context.Context, pool *pgxpool.Pool, email, password string) (bool, error) {
+	email, ok := normalizeEmail(email)
+	if !ok {
+		return false, errors.New("admin email is invalid")
+	}
+	if msg := auth.ValidatePassword(password); msg != "" {
+		return false, fmt.Errorf("admin password %s", msg)
+	}
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return false, err
+	}
+	created := false
+	err = db.InTx(ctx, pool, func(tx pgx.Tx) error {
+		var id, orgID uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id, org_id FROM users WHERE email = $1 FOR UPDATE`, email).Scan(&id, &orgID)
+		switch {
+		case db.IsNoRows(err):
+			created = true
+			id, orgID = uuid.Must(uuid.NewV7()), DefaultOrgID
+			if _, err := tx.Exec(ctx, `INSERT INTO users (id, org_id, email, password_hash, display_name) VALUES ($1, $2, $3, $4, 'Super Admin')`,
+				id, orgID, email, hash); err != nil {
+				return err
+			}
+		case err != nil:
+			return err
+		default:
+			if _, err := tx.Exec(ctx, `UPDATE users SET password_hash = $2, status = 'active', updated_at = now() WHERE id = $1`, id, hash); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL`, id); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `DELETE FROM user_roles WHERE user_id = $1`, id); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM roles WHERE org_id IS NULL AND name = 'super_admin'`, id); err != nil {
+			return err
+		}
+		action := "user.update"
+		if created {
+			action = "user.create"
+		}
+		return audit.Record(ctx, tx, audit.Event{
+			OrgID: orgID, ActorType: audit.ActorSystem, ActorLabel: "amctl set-admin", Action: action,
+			TargetType: "user", TargetID: &id, Details: map[string]any{"email": email, "role": "super_admin", "password_reset": !created},
+		})
+	})
+	return created, err
+}

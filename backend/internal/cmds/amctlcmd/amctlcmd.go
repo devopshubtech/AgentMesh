@@ -25,6 +25,7 @@ import (
 	"github.com/enfec/agentmesh/backend/internal/platform/db"
 	"github.com/enfec/agentmesh/backend/internal/platform/keys"
 	"github.com/enfec/agentmesh/backend/internal/platform/logging"
+	"github.com/enfec/agentmesh/backend/internal/users"
 	"github.com/enfec/agentmesh/backend/migrations"
 )
 
@@ -35,6 +36,8 @@ Usage:
   amctl dev-certs -out DIR [-hosts h1,h2]
                                        create a local CA and gateway TLS certificate
   amctl migrate up|status              apply / show migrations (uses AGENTMESH_DATABASE_URL)
+  amctl set-admin                      create a super admin, or reset its password if the email exists
+                                       (AGENTMESH_ADMIN_EMAIL, AGENTMESH_ADMIN_PASSWORD, AGENTMESH_DATABASE_URL)
   amctl health URL                     exit 0 if URL answers 200 (container health checks)
 `
 
@@ -69,6 +72,8 @@ func Main() {
 		err = keygen()
 	case "dev-certs":
 		err = devCerts(os.Args[2:])
+	case "set-admin":
+		err = setAdmin()
 	case "migrate":
 		err = migrate(os.Args[2:])
 	case "health":
@@ -223,6 +228,32 @@ func loadCA(dir string) (*ecdsa.PrivateKey, *x509.Certificate, bool, error) {
 		return nil, nil, false, err
 	}
 	return key, cert, true, nil
+}
+
+// setAdmin reads the credentials from the environment, not argv, so the
+// password does not show up in the process list.
+func setAdmin() error {
+	url := os.Getenv("AGENTMESH_DATABASE_URL")
+	email, password := os.Getenv("AGENTMESH_ADMIN_EMAIL"), os.Getenv("AGENTMESH_ADMIN_PASSWORD")
+	if url == "" || email == "" || password == "" {
+		return fmt.Errorf("set AGENTMESH_DATABASE_URL, AGENTMESH_ADMIN_EMAIL and AGENTMESH_ADMIN_PASSWORD")
+	}
+	ctx := context.Background()
+	pool, err := db.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer pool.Close()
+	created, err := users.SetAdmin(ctx, pool, email, password)
+	if err != nil {
+		return err
+	}
+	if created {
+		fmt.Println("created super admin", email)
+	} else {
+		fmt.Println("reset the password of", email, "(super admin; other sessions signed out)")
+	}
+	return nil
 }
 
 func migrate(args []string) error {

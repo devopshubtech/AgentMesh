@@ -12,9 +12,11 @@
 #                                                  send the new address to Telegram whenever it changes
 #   ./install.sh --agent-token am_enr_...          also run this Mac's agent as an exit node
 #   ./install.sh --database-url 'postgresql://...' external Postgres (Neon: direct/unpooled URL)
+#   ./install.sh --set-admin                       set a new dashboard admin email / password
 #   ./install.sh --uninstall [--purge]             stop and remove (--purge also deletes settings)
 #
-# First install asks for the dashboard admin email and password. A private
+# First install asks for the dashboard admin email and password; a re-run offers
+# to change them. A private
 # agentmesh-db.env next to this script can hold AM_DATABASE_URL,
 # AM_RENDEZVOUS_GITHUB_TOKEN, AM_TELEGRAM_BOT_TOKEN, AM_TELEGRAM_CHAT_ID and
 # AM_DASHBOARD_URL instead of passing them as options.
@@ -30,7 +32,7 @@ DEFAULT_RENDEZVOUS_GIST=9b876c950f541c735c8a817c96362ca9
 die() { echo "error: $*" >&2; exit 1; }
 say() { printf '\n>> %s\n' "$*"; }
 
-PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST="" TG_TOKEN="" TG_CHAT="" DASH_URL=""
+PUBLIC_URL="" TUNNEL_TOKEN="" QUICK_TUNNEL="" AGENT_TOKEN="" DATABASE_URL="" UNINSTALL="" PURGE="" RDV_TOKEN="" RDV_GIST="" TG_TOKEN="" TG_CHAT="" DASH_URL="" SET_ADMIN=""
 ARGS=("$@")
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -46,7 +48,8 @@ while [ $# -gt 0 ]; do
     --dashboard-url)    DASH_URL=${2:?--dashboard-url needs a value}; shift 2 ;;
     --uninstall)    UNINSTALL=1; shift ;;
     --purge)        PURGE=1; shift ;;
-    -h|--help)      sed -n '3,24p' "$0"; exit 0 ;;
+    --set-admin)    SET_ADMIN=1; shift ;;
+    -h|--help)      sed -n '3,25p' "$0"; exit 0 ;;
     *) die "unknown option: $1 (see --help)" ;;
   esac
 done
@@ -121,23 +124,31 @@ if [ -n "$PRIVATE" ]; then
   DASH_URL=${DASH_URL:-$(priv AM_DASHBOARD_URL)}
 fi
 
-NEW_ADMIN_EMAIL="" NEW_ADMIN_PW="" ADMIN_PW_GENERATED=""
+NEW_ADMIN_EMAIL="" NEW_ADMIN_PW="" ADMIN_PW_GENERATED="" APPLY_ADMIN=""
+# Asks for the dashboard admin login. $1 = what Enter on the password does
+# ("generate" or "required"). A typed login is applied with amctl set-admin once
+# the API is up, so it also works when the database already has users.
+prompt_admin() {
+  read -r -p "  Admin email (username) [$NEW_ADMIN_EMAIL]: " ans
+  [ -n "$ans" ] && NEW_ADMIN_EMAIL=$ans
+  case "$NEW_ADMIN_EMAIL" in *@*.*) ;; *) die "admin email must look like name@example.com" ;; esac
+  local hint="12+ characters, Enter = generate one"; [ "$1" = required ] && hint="12+ characters"
+  while :; do
+    read -r -s -p "  Admin password ($hint): " NEW_ADMIN_PW; echo
+    if [ -z "$NEW_ADMIN_PW" ]; then [ "$1" = generate ] && return 0; echo "  a password is required"; continue; fi
+    case "$NEW_ADMIN_PW" in *"'"*) echo "  the password cannot contain a single quote ('), try again"; continue ;; esac
+    [ ${#NEW_ADMIN_PW} -ge 12 ] || { echo "  too short (${#NEW_ADMIN_PW} characters), try again"; continue; }
+    read -r -s -p "  Repeat the password: " again; echo
+    [ "$again" = "$NEW_ADMIN_PW" ] && break
+    echo "  passwords do not match, try again"
+  done
+  APPLY_ADMIN=1
+}
 if [ ! -f "$ENVF" ]; then
   NEW_ADMIN_EMAIL=admin@agentmesh.local
   if [ -t 0 ]; then
     say "first install: set the dashboard admin account"
-    read -r -p "  Admin email (username) [admin@agentmesh.local]: " ans
-    [ -n "$ans" ] && NEW_ADMIN_EMAIL=$ans
-    case "$NEW_ADMIN_EMAIL" in *@*.*) ;; *) die "admin email must look like name@example.com" ;; esac
-    while :; do
-      read -r -s -p "  Admin password (12+ characters, Enter = generate one): " NEW_ADMIN_PW; echo
-      [ -z "$NEW_ADMIN_PW" ] && break
-      case "$NEW_ADMIN_PW" in *"'"*) echo "  the password cannot contain a single quote ('), try again"; continue ;; esac
-      [ ${#NEW_ADMIN_PW} -ge 12 ] || { echo "  too short (${#NEW_ADMIN_PW} characters), try again"; continue; }
-      read -r -s -p "  Repeat the password: " again; echo
-      [ "$again" = "$NEW_ADMIN_PW" ] && break
-      echo "  passwords do not match, try again"
-    done
+    prompt_admin generate
     if [ -z "$DATABASE_URL" ]; then
       read -r -p "  Postgres URL (e.g. Neon direct/unpooled connection string): " DATABASE_URL
     fi
@@ -165,6 +176,23 @@ if [ ! -f "$ENVF" ]; then
   set_env AGENTMESH_BOOTSTRAP_ADMIN_EMAIL "$NEW_ADMIN_EMAIL"
   set_env AGENTMESH_BOOTSTRAP_ADMIN_PASSWORD "$NEW_ADMIN_PW"
   say "created $ENVF"
+else
+  # Re-run: offer to change the dashboard admin login (or --set-admin).
+  NEW_ADMIN_EMAIL=$(get_env AGENTMESH_BOOTSTRAP_ADMIN_EMAIL); NEW_ADMIN_EMAIL=${NEW_ADMIN_EMAIL:-admin@agentmesh.local}
+  ans=n
+  if [ -n "$SET_ADMIN" ]; then ans=y
+  elif [ -t 0 ]; then read -r -p "Change the dashboard admin login (email / password)? [y/N]: " ans; fi
+  case "$ans" in
+    [yY]*)
+      [ -t 0 ] || die "--set-admin needs a terminal to ask for the new login"
+      say "new dashboard admin login (an existing email gets the new password)"
+      prompt_admin required ;;
+    *) NEW_ADMIN_PW="" ;;
+  esac
+fi
+if [ -n "$APPLY_ADMIN" ]; then
+  set_env AGENTMESH_BOOTSTRAP_ADMIN_EMAIL "$NEW_ADMIN_EMAIL"
+  set_env AGENTMESH_BOOTSTRAP_ADMIN_PASSWORD "$NEW_ADMIN_PW"
 fi
 case "$DATABASE_URL" in ""|postgres://*|postgresql://*) ;; *) die "database URL must start with postgres:// or postgresql://" ;; esac
 case "$DATABASE_URL" in *-pooler.*) die "use the direct (unpooled) connection string, not the -pooler one" ;; esac
@@ -219,7 +247,8 @@ cmd_for() {
     worker)        echo 'exec "$P/bin/worker"' ;;
     web)           echo 'exec "$P/bin/caddy" run --config "$P/etc/Caddyfile" --adapter caddyfile' ;;
     tunnel)        echo "$TUNNEL_CMD" ;;
-    publicurl)     [ -n "$(get_env AM_QUICK_TUNNEL)" ] && [ -z "$(get_env AM_TUNNEL_TOKEN)" ] && echo 'exec "$P/bin/agentmesh-publicurl"' ;;
+    # Only with the free quick tunnel. The if (not &&) keeps set -e from aborting the install otherwise.
+    publicurl)     if [ -n "$(get_env AM_QUICK_TUNNEL)" ] && [ -z "$(get_env AM_TUNNEL_TOKEN)" ]; then echo 'exec "$P/bin/agentmesh-publicurl"'; fi ;;
   esac
 }
 xml() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
@@ -269,6 +298,12 @@ for _ in $(seq 1 90); do
 done
 [ -n "$ok" ] || die "control-api is not ready; see $LOG/control-api.log"
 svc_start worker
+if [ -n "$APPLY_ADMIN" ]; then
+  # Credentials go through the environment, not argv (process list).
+  as_user env AGENTMESH_ADMIN_EMAIL="$NEW_ADMIN_EMAIL" AGENTMESH_ADMIN_PASSWORD="$NEW_ADMIN_PW" \
+    AGENTMESH_DATABASE_URL="$(get_env AGENTMESH_DATABASE_URL)" "$PREFIX/bin/amctl" set-admin \
+    || die "could not set the admin login; see the message above"
+fi
 curl -fsSk -o /dev/null https://127.0.0.1:13443/ || echo "warning: web front not answering yet; see $LOG/web.log"
 
 if [ -f "$(plist publicurl)" ]; then
@@ -300,7 +335,7 @@ if [ -n "$ADMIN_PW_GENERATED" ]; then
 elif [ -n "$NEW_ADMIN_PW" ]; then
   echo "   Admin login:           $NEW_ADMIN_EMAIL / the password you just set"
 fi
-echo "   (The admin is created only if the database has no users yet.)"
+[ -n "$ADMIN_PW_GENERATED" ] && echo "   (A generated admin is created only if the database has no users yet; use --set-admin to choose one.)"
 echo
 echo "   Settings: $ENVF     Logs: $LOG/"
 echo "   Restart one service:  sudo launchctl kickstart -k system/com.agentmesh.control-api"
