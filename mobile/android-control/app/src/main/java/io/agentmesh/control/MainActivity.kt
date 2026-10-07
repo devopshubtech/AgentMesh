@@ -11,6 +11,7 @@ import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import com.journeyapps.barcodescanner.ScanContract
@@ -35,10 +36,15 @@ class MainActivity : ComponentActivity() {
         result.contents?.let { text -> vm.importLink(text)?.let(::requestConnect) }
     }
 
+    // System photo picker: no storage permission needed.
+    private val galleryPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        uri?.let { vm.importQrImage(it, ::requestConnect) }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent { AgentMeshApp(vm, onScan = ::scan, onConnect = ::requestConnect) }
+        setContent { AgentMeshApp(vm, onScan = ::scan, onPickImage = ::pickImage, onConnect = ::requestConnect) }
         if (savedInstanceState == null) handleDeepLink(intent)
     }
 
@@ -61,6 +67,10 @@ class MainActivity : ComponentActivity() {
                 .setBeepEnabled(false)
                 .setOrientationLocked(false)
         )
+    }
+
+    private fun pickImage() {
+        galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
     }
 
     private fun requestConnect(p: ConnectProfile) {

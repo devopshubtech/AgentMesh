@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import io.agentmesh.control.App
 import io.agentmesh.control.data.ConnectProfile
 import io.agentmesh.control.data.Links
+import io.agentmesh.control.data.QrImage
 import io.agentmesh.control.vpn.ExitVpnService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,6 +48,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(showAdd = false) }
         reload()
         return p
+    }
+
+    /** Reads the QR code in a picture chosen from the gallery and saves its link. */
+    fun importQrImage(uri: android.net.Uri, onSaved: (ConnectProfile) -> Unit) {
+        viewModelScope.launch {
+            val app = getApplication<App>()
+            val text = withContext(Dispatchers.Default) { runCatching { QrImage.read(app.contentResolver, uri) }.getOrNull() }
+            if (text == null) {
+                toast("No QR code found in that picture. Choose a clear screenshot of the QR code from Connect a phone.")
+                return@launch
+            }
+            importLink(text)?.let(onSaved)
+        }
     }
 
     /**

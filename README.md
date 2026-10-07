@@ -3,12 +3,12 @@
 > ## ⬇️ Direct downloads
 > | App | Direct link |
 > |---|---|
-> | 📱 **Android app v0.6.3 (APK)** | **[Download agentmesh-control-v0.6.3.apk](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-control-v0.6.3.apk)** · always-latest: [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
+> | 📱 **Android app v0.6.4 (APK)** | **[Download agentmesh-control-v0.6.4.apk](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.4/agentmesh-control-v0.6.4.apk)** · always-latest: [agentmesh-control.apk](https://github.com/devopshubtech/AgentMesh/releases/latest/download/agentmesh-control.apk) |
 > | 🍎 **macOS agent, Apple Silicon (M1–M4)** | **[agentmesh-agent_0.6.3_darwin_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_arm64.tar.gz)** |
 > | 🍎 **macOS agent, Intel** | **[agentmesh-agent_0.6.3_darwin_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_darwin_amd64.tar.gz)** |
 > | 🪟 **Windows agent (x64)** | **[agentmesh-agent_0.6.3_windows_amd64.zip](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_windows_amd64.zip)** |
 > | 🐧 **Linux agent (.deb x64)** | **[agentmesh-agent_0.6.3_amd64.deb](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-agent_0.6.3_amd64.deb)** |
-> | 🖥️ **Server for Mac mini (native, Apple Silicon)** | **[agentmesh-server_0.6.3_macos_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_arm64.tar.gz)** · Intel: [agentmesh-server_0.6.3_macos_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_amd64.tar.gz) · see [Run the server on a Mac mini](#run-the-server-on-a-mac-mini) |
+> | 🖥️ **Server for Mac mini (native, Apple Silicon)** | **[agentmesh-server_0.6.4_macos_arm64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.4/agentmesh-server_0.6.4_macos_arm64.tar.gz)** · Intel: [agentmesh-server_0.6.4_macos_amd64.tar.gz](https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.4/agentmesh-server_0.6.4_macos_amd64.tar.gz) · see [Run the server on a Mac mini](#run-the-server-on-a-mac-mini) |
 >
 > See [all downloads](#downloads) for ARM, `.rpm`, Raspberry Pi and one-line installers. Every release: [Releases page](https://github.com/devopshubtech/AgentMesh/releases/latest).
 >
@@ -22,8 +22,8 @@ Native install, no Docker: the AgentMesh server, NATS, a Caddy web front and clo
 
 ```bash
 # Apple Silicon (M1–M4); use _macos_amd64 on an Intel Mac
-curl -fLO https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.3/agentmesh-server_0.6.3_macos_arm64.tar.gz
-tar -xzf agentmesh-server_0.6.3_macos_arm64.tar.gz && cd agentmesh-server
+curl -fLO https://github.com/devopshubtech/AgentMesh/releases/download/v0.6.4/agentmesh-server_0.6.4_macos_arm64.tar.gz
+tar -xzf agentmesh-server_0.6.4_macos_arm64.tar.gz && cd agentmesh-server
 ./install.sh
 ```
 
@@ -43,7 +43,7 @@ tar -xzf agentmesh-server_0.6.3_macos_arm64.tar.gz && cd agentmesh-server
 
 1. **On the computer:** run `powershell -ExecutionPolicy Bypass -File scripts\start-agentmesh.ps1`. Optionally also run `scripts\install-autostart.ps1` so it keeps running and heals itself after sleep or a reboot.
 2. **Create a QR code or pairing code:** open **http://localhost:13000**, sign in with the admin account, and go to **Connect a phone**. Then click **Create connect QR code**, or click **Create pairing code** for a 6-digit code that works for 15 minutes.
-3. **On any phone:** open the AgentMesh app and tap **Connect to remote server**. Then either scan the QR code, or type the 6-digit code. Opening the QR link from the camera also works. No username, password or domain is needed; the app finds the computer's current address by itself.
+3. **On any phone:** open the AgentMesh app and tap **Connect to remote server**. Then scan the QR code, **choose a screenshot of it from the gallery / Photos**, or type the 6-digit code. Opening the QR link from the camera also works. No username, password or domain is needed; the app finds the computer's current address by itself.
 4. **Result:** the phone's internet now goes out through the computer. "What is my IP" shows the computer's IP, on mobile data or any Wi-Fi.
 
 Other details:
@@ -196,6 +196,14 @@ $env:GOOS="windows"; go build -trimpath -o dist/agentmesh-agent-windows-amd64.ex
 On Linux or macOS you can use `make agents` instead.
 
 ---
+
+## iPhone app
+
+The iPhone version of the control app lives in [mobile/ios-control](mobile/ios-control/README.md): the same connect options (camera QR, QR from Photos, 6-digit code), the same Go tunnel engine in an iOS packet-tunnel extension. iPhone apps are `.ipa` files and are installed through **TestFlight** or the App Store, not by download. Building needs a Mac with Xcode and a paid Apple Developer account:
+
+```bash
+cd mobile/ios-control && DEVELOPMENT_TEAM=<Team ID> ./build.sh --archive   # -> dist/AgentMesh-<version>.ipa
+```
 
 ## Android control app + exit node
 

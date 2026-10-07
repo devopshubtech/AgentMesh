@@ -73,7 +73,7 @@ private fun AgentMeshTheme(content: @Composable () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AgentMeshApp(vm: AppViewModel, onScan: () -> Unit, onConnect: (ConnectProfile) -> Unit) {
+fun AgentMeshApp(vm: AppViewModel, onScan: () -> Unit, onPickImage: () -> Unit, onConnect: (ConnectProfile) -> Unit) {
     val st by vm.state.collectAsState()
     val vpn by ExitVpnService.status.collectAsState()
     val snackbar = remember { SnackbarHostState() }
@@ -113,7 +113,7 @@ fun AgentMeshApp(vm: AppViewModel, onScan: () -> Unit, onConnect: (ConnectProfil
             }
         }
 
-        if (st.showAdd) AddServerDialog(busy = st.pairing, onDismiss = { vm.showAdd(false) }, onScan = onScan, onSubmit = { text ->
+        if (st.showAdd) AddServerDialog(busy = st.pairing, onDismiss = { vm.showAdd(false) }, onScan = onScan, onPickImage = onPickImage, onSubmit = { text ->
             vm.submitCodeOrLink(text, onConnect)
         })
         st.editing?.let { p ->
@@ -193,7 +193,7 @@ private fun StatusCard(vpn: VpnStatus, exitIp: String?, checking: Boolean, onChe
 }
 
 @Composable
-private fun AddServerDialog(busy: Boolean, onDismiss: () -> Unit, onScan: () -> Unit, onSubmit: (String) -> Unit) {
+private fun AddServerDialog(busy: Boolean, onDismiss: () -> Unit, onScan: () -> Unit, onPickImage: () -> Unit, onSubmit: (String) -> Unit) {
     var text by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -201,6 +201,10 @@ private fun AddServerDialog(busy: Boolean, onDismiss: () -> Unit, onScan: () -> 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(onClick = onScan, enabled = !busy, modifier = Modifier.fillMaxWidth().height(52.dp)) { Text("Scan QR code") }
+                OutlinedButton(onClick = onPickImage, enabled = !busy, modifier = Modifier.fillMaxWidth().height(52.dp)) {
+                    Text("Choose QR code from gallery")
+                }
+                Text("Tip: take a screenshot of the QR code, then choose it here.", color = Muted, fontSize = 12.sp)
                 Text("or enter the 6-digit pairing code (or paste the link):", color = Muted, fontSize = 13.sp)
                 OutlinedTextField(text, { text = it }, placeholder = { Text("123 456") }, singleLine = true, enabled = !busy,
                     textStyle = LocalTextStyle.current.copy(fontSize = 22.sp, letterSpacing = 4.sp),

@@ -1,0 +1,82 @@
+# XcodeGen spec for the AgentMesh iPhone app. build.sh generates
+# AgentMesh.xcodeproj from it (the project file itself is not committed).
+#
+# Set per build (build.sh exports defaults):
+#   DEVELOPMENT_TEAM       your Apple Developer Team ID
+#   AGENTMESH_BUNDLE_ID    app bundle ID; the tunnel is <id>.tunnel, the App Group group.<id>
+#   AGENTMESH_VERSION      shown version, e.g. 0.6.4
+#   AGENTMESH_BUILD        build number, must grow with every TestFlight upload
+name: AgentMesh
+options:
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: ${AGENTMESH_VERSION}
+    CURRENT_PROJECT_VERSION: ${AGENTMESH_BUILD}
+    AM_BUNDLE_ID: ${AGENTMESH_BUNDLE_ID}
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_BITCODE: NO
+targets:
+  AgentMesh:
+    type: application
+    platform: iOS
+    sources: [App, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(AM_BUNDLE_ID)
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: AgentMesh
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: AgentMesh
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AMAppGroup: group.$(AM_BUNDLE_ID)
+        ITSAppUsesNonExemptEncryption: false
+        NSCameraUsageDescription: AgentMesh uses the camera to scan the connect QR code from your dashboard.
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        CFBundleURLTypes:
+          - CFBundleURLName: io.agentmesh.join
+            CFBundleURLSchemes: [agentmesh]
+    entitlements:
+      path: App/AgentMesh.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.$(AM_BUNDLE_ID)]
+    dependencies:
+      - target: AgentMeshTunnel
+  AgentMeshTunnel:
+    type: app-extension
+    platform: iOS
+    sources: [Tunnel, Shared]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(AM_BUNDLE_ID).tunnel
+        SWIFT_OBJC_BRIDGING_HEADER: Tunnel/Tunnel-Bridging-Header.h
+        # gomobile's static framework pulls in libresolv for Go's DNS code.
+        OTHER_LDFLAGS: [-lresolv]
+    info:
+      path: Tunnel/Info.plist
+      properties:
+        CFBundleDisplayName: AgentMesh Tunnel
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        AMAppGroup: group.$(AM_BUNDLE_ID)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    entitlements:
+      path: Tunnel/AgentMeshTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.$(AM_BUNDLE_ID)]
+    dependencies:
+      - framework: Frameworks/Tunnel.xcframework
+        embed: false # static framework: linked into the extension

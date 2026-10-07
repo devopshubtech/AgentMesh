@@ -15,8 +15,11 @@ CLOUDFLARED_VER=2026.10.0
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
-OUT=dist/release STAGE=dist/stage-macos DL=dist/cache-macos
-rm -rf "$STAGE" && mkdir -p "$OUT" "$STAGE" "$DL"
+# Staging lives outside the repo: a synced folder (OneDrive, Dropbox) changing
+# files under tar makes it fail with "file changed as we read it".
+OUT=dist/release DL=dist/cache-macos
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/agentmesh-macos.XXXXXX")
+mkdir -p "$OUT" "$DL"
 
 fetch() { [ -s "$2" ] || { echo ">> download $1"; curl -fsSL "$1" -o "$2.part" && mv "$2.part" "$2"; }; }
 

@@ -1,6 +1,6 @@
-// Package tunnel is the exit-node client engine used by the Android control
-// app (bound with gomobile). It reads IP packets from the VpnService TUN file
-// descriptor, terminates TCP/UDP in a userspace stack (gVisor via tun2socks
+// Package tunnel is the exit-node client engine used by the Android and iOS
+// control apps (bound with gomobile). It reads IP packets from the TUN file
+// descriptor (Android VpnService, iOS NEPacketTunnelProvider utun), terminates TCP/UDP in a userspace stack (gVisor via tun2socks
 // core) and carries every flow over the AgentMesh relay to the chosen agent,
 // which dials the real destination. Traffic therefore exits from the agent's
 // network and IP address.
@@ -30,7 +30,6 @@ import (
 	"github.com/xjasonlyu/tun2socks/v2/core"
 	"github.com/xjasonlyu/tun2socks/v2/core/adapter"
 	"github.com/xjasonlyu/tun2socks/v2/core/device"
-	"github.com/xjasonlyu/tun2socks/v2/core/device/fdbased"
 	"gvisor.dev/gvisor/pkg/tcpip/stack"
 
 	"github.com/enfec/agentmesh/protocols/agentapi"
@@ -187,7 +186,7 @@ func (e *Engine) Start(fd int, relayURL, ticket, caPEM string, mtu int) error {
 	if err != nil {
 		return err
 	}
-	dev, err := fdbased.Open(strconv.Itoa(fd), uint32(mtu), 0)
+	dev, err := openTUN(fd, mtu)
 	if err != nil {
 		rc.close()
 		return fmt.Errorf("open tun fd: %w", err)
