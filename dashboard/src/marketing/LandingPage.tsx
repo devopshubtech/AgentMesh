@@ -29,6 +29,8 @@ import { ThemeToggle } from '@/app/ThemeToggle';
 import { Button } from '@/components/ui/button';
 import { CopyField } from '@/components/copy-button';
 import { cn } from '@/lib/cn';
+import { AndroidWalkthrough } from './AndroidWalkthrough';
+import { QrArt } from './QrArt';
 
 const REPO = 'https://github.com/devopshubtech/agentmeshvpn';
 const RELEASES = 'https://github.com/devopshubtech/AgentMesh/releases/latest';
@@ -124,6 +126,15 @@ export function LandingPage() {
           connection. Because everything travels as ordinary HTTPS, it works behind any router, on hotel Wi-Fi and on mobile
           networks. When the free address changes, the server publishes the new one and phones find it on their own.
         </p>
+      </Section>
+
+      {/* ------------------------------------------------------------ Android app tour */}
+      <Section id="app-tour" eyebrow="Android app" title="See the Android app in action">
+        <p className="-mt-4 mb-8 max-w-2xl text-muted">
+          From download to connected in about a minute: install the app, open it, then scan the QR code, pick it from the gallery
+          or type the pairing code.
+        </p>
+        <AndroidWalkthrough />
       </Section>
 
       {/* ------------------------------------------------------------ features */}
@@ -263,6 +274,7 @@ function SiteHeader({ signedIn, onDemo }: { signedIn: boolean; onDemo: () => voi
         </Link>
         <nav className="ml-6 hidden gap-5 text-sm text-muted md:flex" aria-label="Sections">
           <a href="#how" className="hover:text-fg">How it works</a>
+          <a href="#app-tour" className="hover:text-fg">App tour</a>
           <a href="#features" className="hover:text-fg">Features</a>
           <a href="#install" className="hover:text-fg">Install</a>
           <a href="#faq" className="hover:text-fg">FAQ</a>
@@ -343,7 +355,7 @@ function HeroCard() {
           </span>
         </div>
         <div className="mt-5 flex items-center gap-5">
-          <QrArt />
+          <QrArt className="size-32 shrink-0 border border-border" />
           <div className="min-w-0 text-sm">
             <p className="font-semibold">Scan with the phone</p>
             <p className="mt-1 text-muted">or type the pairing code</p>
@@ -373,36 +385,6 @@ function PhoneRow({ name, data }: { name: string; data: string }) {
       </span>
       <span className="text-xs text-muted">{data}</span>
     </div>
-  );
-}
-
-/** Decorative QR-like pattern (not a real code). */
-function QrArt() {
-  const cells: [number, number][] = [];
-  let seed = 7;
-  for (let y = 0; y < 21; y++) {
-    for (let x = 0; x < 21; x++) {
-      const finder = (x < 7 && y < 7) || (x > 13 && y < 7) || (x < 7 && y > 13);
-      seed = (seed * 9301 + 49297) % 233280;
-      if (!finder && seed / 233280 > 0.55) cells.push([x, y]);
-    }
-  }
-  const finder = (ox: number, oy: number) => (
-    <g key={`${ox}-${oy}`}>
-      <rect x={ox} y={oy} width={7} height={7} className="fill-fg" />
-      <rect x={ox + 1} y={oy + 1} width={5} height={5} className="fill-surface" />
-      <rect x={ox + 2} y={oy + 2} width={3} height={3} className="fill-fg" />
-    </g>
-  );
-  return (
-    <svg viewBox="-1 -1 23 23" className="size-32 shrink-0 rounded-lg border border-border bg-surface p-1" role="img" aria-label="QR code">
-      {finder(0, 0)}
-      {finder(14, 0)}
-      {finder(0, 14)}
-      {cells.map(([x, y]) => (
-        <rect key={`${x}.${y}`} x={x} y={y} width={1} height={1} className="fill-fg" />
-      ))}
-    </svg>
   );
 }
 
@@ -527,7 +509,13 @@ function InstallTabs() {
             <a href={APK}>
               <Button icon={<Download className="size-4" aria-hidden />}>Download the Android app (APK)</Button>
             </a>
-            <p className="text-xs text-muted">Android 8 or newer. Updates install over the old version.</p>
+            <p className="text-xs text-muted">
+              Android 8 or newer. Updates install over the old version.{' '}
+              <a href="#app-tour" className="font-medium text-primary hover:underline">
+                Watch the step-by-step walkthrough
+              </a>
+              .
+            </p>
           </>
         )}
         {tab === 'iphone' && (

@@ -73,3 +73,35 @@
     background: rgb(0 0 0 / 0.5);
   }
 }
+
+/* ---- Android app walkthrough on the product page (src/marketing/AndroidWalkthrough.tsx) ---- */
+@keyframes am-progress {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+@keyframes am-scan {
+  0%, 100% { top: 10%; }
+  50% { top: 86%; }
+}
+@keyframes am-tap {
+  0% { transform: scale(0.5); opacity: 0; }
+  35% { opacity: 0.85; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+@keyframes am-screen-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes am-download {
+  from { transform: scaleX(0.05); }
+  to { transform: scaleX(1); }
+}
+.am-progress { transform-origin: left; animation: am-progress 4500ms linear forwards; }
+.am-scan-line { animation: am-scan 2.2s ease-in-out infinite; }
+.am-tap { animation: am-tap 1.2s ease-out 1.1s infinite; }
+.am-screen-in { animation: am-screen-in 350ms ease-out both; }
+.am-download { transform-origin: left; animation: am-download 2.6s ease-out forwards; }
+.am-paused .am-progress { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .am-scan-line, .am-tap, .am-screen-in, .am-download, .am-progress { animation: none; }
+}
