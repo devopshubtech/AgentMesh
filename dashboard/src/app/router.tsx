@@ -1,5 +1,6 @@
 import { createBrowserRouter } from 'react-router';
 import { LoginPage } from '@/auth/LoginPage';
+import { LandingPage } from '@/marketing/LandingPage';
 import { RequireAuth, RequirePermission } from '@/auth/guards';
 import { DevicesPage } from '@/features/devices/DevicesPage';
 import { DeviceDetailPage } from '@/features/devices/DeviceDetailPage';
@@ -11,6 +12,7 @@ import { Layout } from './Layout';
 import { HomeRedirect, NotFound, RouteError } from './route-components';
 
 export const router = createBrowserRouter([
+  { path: '/welcome', element: <LandingPage />, errorElement: <RouteError /> },
   { path: '/login', element: <LoginPage />, errorElement: <RouteError /> },
   {
     path: '/',

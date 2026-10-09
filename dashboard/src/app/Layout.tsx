@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import {
   KeyRound,
   LogOut,
@@ -56,12 +56,12 @@ function LiveIndicator({ status }: { status: 'connecting' | 'open' | 'closed' })
 }
 
 export function Layout() {
-  const { user, logout } = useAuth();
+  const { user, logout, demo } = useAuth();
   const can = usePermissions();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const liveStatus = useLiveEvents(!!user);
+  const liveStatus = useLiveEvents(!!user && !demo); // no event stream in the demo
   const config = useConfig();
 
   const items = NAV.filter((n) => can(n.perm));
@@ -72,7 +72,7 @@ export function Layout() {
       await logout();
     } finally {
       setLoggingOut(false);
-      void navigate('/login', { replace: true });
+      void navigate(demo ? '/welcome' : '/login', { replace: true });
     }
   };
 
@@ -138,7 +138,7 @@ export function Layout() {
             <Menu className="size-5" />
           </button>
           <div className="flex-1" />
-          <LiveIndicator status={liveStatus} />
+          {demo ? <Badge tone="yellow">Demo</Badge> : <LiveIndicator status={liveStatus} />}
           <ThemeToggle />
           {user && (
             <div className="flex min-w-0 items-center gap-2 border-l border-border pl-3">
@@ -158,9 +158,22 @@ export function Layout() {
             loading={loggingOut}
             icon={<LogOut className="size-4" aria-hidden />}
           >
-            <span className="hidden sm:inline">Log out</span>
+            <span className="hidden sm:inline">{demo ? 'Exit demo' : 'Log out'}</span>
           </Button>
         </header>
+        {demo && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-200">
+            <span>
+              <strong>Demo mode:</strong> sample devices and phones. Click around freely, nothing is saved or sent anywhere.
+            </span>
+            <Link to="/welcome#install" className="font-medium underline underline-offset-2">
+              Install AgentMesh
+            </Link>
+            <button type="button" onClick={() => void onLogout()} className="font-medium underline underline-offset-2">
+              Exit demo
+            </button>
+          </div>
+        )}
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-7xl p-4 md:p-6">
             <Outlet />

@@ -10,6 +10,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
   if (status === 'loading') return <PageLoader label="Restoring session…" />;
   if (status === 'unauthenticated') {
+    // Visitors who open the site itself see the product page; deep links go to sign-in.
+    if (location.pathname === '/') return <Navigate to="/welcome" replace />;
     return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
   return <>{children}</>;

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
-import { Navigate, useLocation } from 'react-router';
-import { AlertCircle, Network } from 'lucide-react';
+import { Link, Navigate, useLocation } from 'react-router';
+import { AlertCircle, Network, PlayCircle } from 'lucide-react';
 import { isApiError } from '@/api/client';
 import { Button } from '@/components/ui/button';
 import { Field, Input } from '@/components/ui/input';
@@ -26,7 +26,7 @@ function describeLoginError(err: unknown): { message: string; requestId: string 
 }
 
 export function LoginPage() {
-  const { status, login, bootError } = useAuth();
+  const { status, login, bootError, startDemo } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -120,6 +120,15 @@ export function LoginPage() {
             Sign in
           </Button>
         </form>
+        <div className="mt-6 flex flex-col items-center gap-3 border-t border-border pt-6 text-center">
+          <p className="text-sm text-muted">No account yet? Look around first.</p>
+          <Button variant="outline" className="w-full" icon={<PlayCircle className="size-4" aria-hidden />} onClick={startDemo}>
+            Explore the demo without signing in
+          </Button>
+          <Link to="/welcome" className="text-sm font-medium text-primary hover:underline">
+            What is AgentMesh?
+          </Link>
+        </div>
       </div>
     </div>
   );

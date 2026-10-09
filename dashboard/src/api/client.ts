@@ -1,4 +1,6 @@
 import { clearSession, getAccessToken, getSession, setSession } from '@/auth/session';
+import { demoApi } from '@/demo/api';
+import { isDemo } from '@/demo/mode';
 import type { ApiErrorBody, LoginResponse } from './types';
 
 export const API_BASE = '/v1';
@@ -197,6 +199,8 @@ async function send(path: string, opts: RequestOptions, token: string | null): P
  * refreshes once (single-flight) and retries; if that fails the session ends.
  */
 export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  // Demo mode answers from sample data in the browser; no server is involved.
+  if (isDemo()) return demoApi<T>(path, opts);
   let res = await send(path, opts, opts.anonymous ? null : getAccessToken());
 
   if (res.status === 401 && !opts.anonymous) {

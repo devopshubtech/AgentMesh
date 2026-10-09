@@ -10,6 +10,10 @@ export interface AuthContextValue {
   logout: () => Promise<void>;
   /** Error from the initial session restore (non-401), shown on the login page. */
   bootError: unknown;
+  /** True while exploring the demo (sample data, no server). */
+  demo: boolean;
+  /** Opens the dashboard with sample data, without an account. */
+  startDemo: () => void;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
