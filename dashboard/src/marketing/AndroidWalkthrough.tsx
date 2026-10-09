@@ -462,20 +462,20 @@ function ConnectedScreen() {
       <AppBar />
       <div className="mx-3 rounded-3xl bg-[#e3f5e9] p-4">
         <p className="flex items-center gap-2 text-[14px] font-semibold">
-          <span className="size-2 rounded-full bg-emerald-500" aria-hidden /> Connected — internet via Office Mac mini
+          <span className="size-2 rounded-full bg-emerald-500" aria-hidden /> Connected — internet via Home computer
         </p>
         <p className="mt-1.5 text-[11.5px] text-neutral-600">↑ 2.1 MB   ↓ 48.6 MB</p>
         <p className="mt-2 text-[12.5px] font-semibold">Your IP now: 49.205.112.37</p>
         <div className="mt-3 flex gap-2">
-          <PillButton outline className="h-9 flex-1 px-1 text-[11.5px] whitespace-nowrap">Check my IP</PillButton>
-          <PillButton className="h-9 flex-1 px-2 text-[12px]">Disconnect</PillButton>
+          <PillButton outline className="h-9 flex-1 px-1 text-[11.5px] min-w-0 whitespace-nowrap">Check my IP</PillButton>
+          <PillButton className="h-9 min-w-0 flex-1 px-1 text-[11.5px] whitespace-nowrap">Disconnect</PillButton>
         </div>
       </div>
       <p className="mx-4 mt-4 text-[12px] font-semibold">Saved servers</p>
       <div className="mx-3 mt-2 flex items-center justify-between rounded-2xl bg-[#eef0fb] px-4 py-3">
         <div>
-          <p className="text-[13px] font-semibold">Office Mac mini</p>
-          <p className="text-[10.5px] text-neutral-500">via Office Mac mini · Family</p>
+          <p className="text-[13px] font-semibold">Home computer</p>
+          <p className="text-[10.5px] text-neutral-500">Family link</p>
         </div>
         <span className="flex items-center gap-1 text-[12px] font-semibold text-emerald-600">
           <KeyRound className="size-3.5" aria-hidden /> Connected

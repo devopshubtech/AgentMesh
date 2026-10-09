@@ -175,7 +175,7 @@ export function Layout() {
           </div>
         )}
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-7xl p-4 md:p-6">
+          <div className="w-full p-4 md:p-6 xl:px-10">
             <Outlet />
           </div>
         </main>

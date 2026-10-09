@@ -59,7 +59,7 @@ export function LandingPage() {
       <SiteHeader signedIn={signedIn} onDemo={openDemo} />
 
       {/* ------------------------------------------------------------ hero */}
-      <section className="mx-auto grid max-w-6xl items-center gap-10 px-4 pt-14 pb-16 md:grid-cols-2 md:pt-20">
+      <section className="grid w-full items-center gap-10 px-5 md:px-10 xl:px-16 2xl:px-24 pt-14 pb-16 md:grid-cols-2 md:pt-20">
         <div>
           <span className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
             <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
@@ -108,7 +108,7 @@ export function LandingPage() {
         <FlowDiagram />
         <ol className="mt-10 grid gap-4 md:grid-cols-3">
           <Step n={1} title="Install the server">
-            Run the AgentMesh server on the computer whose internet you want to use, for example a Mac mini at home. It
+            Run the AgentMesh server on the computer whose internet you want to use, for example a computer at home or in the office. It
             gets a free public HTTPS address automatically, with no router or domain needed.
           </Step>
           <Step n={2} title="Create a QR code">
@@ -165,13 +165,13 @@ export function LandingPage() {
             Every sign-in, link, connection and command is recorded in a hash-chained log you can verify.
           </Tile>
           <Tile icon={Server} title="Self-hosted">
-            Runs on your own Mac mini, PC or server. Your traffic never passes through a third-party VPN provider.
+            Runs on your own Mac, PC or server. Your traffic never passes through a third-party VPN provider.
           </Tile>
         </div>
       </Section>
 
       {/* ------------------------------------------------------------ demo CTA */}
-      <section className="mx-auto max-w-6xl px-4 py-6">
+      <section className="w-full px-5 md:px-10 xl:px-16 2xl:px-24 py-6">
         <div className="flex flex-col items-start gap-5 rounded-2xl bg-primary px-6 py-8 text-primary-fg md:flex-row md:items-center md:justify-between md:px-10">
           <div>
             <h2 className="text-2xl font-bold">See the dashboard in action</h2>
@@ -209,7 +209,7 @@ export function LandingPage() {
 
       {/* ------------------------------------------------------------ FAQ */}
       <Section id="faq" eyebrow="FAQ" title="Questions">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Faq q="Is this a VPN?">
             For the phone, yes: it uses the phone's VPN feature. But instead of a commercial VPN server, your traffic goes out
             through your own computer, with its IP address.
@@ -219,7 +219,7 @@ export function LandingPage() {
             tunnel, expect around 10 Mbit/s; with your own domain or a server, it is much faster.
           </Faq>
           <Faq q="Does the computer have to stay on?">
-            Yes. The phone uses that computer's internet, so it must be on and awake. On a Mac mini the server starts by
+            Yes. The phone uses that computer's internet, so it must be on and awake. On macOS the server starts by
             itself after a restart.
           </Faq>
           <Faq q="Does it work on iPhone?">
@@ -237,7 +237,7 @@ export function LandingPage() {
       </Section>
 
       <footer className="mt-10 border-t border-border bg-surface">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-muted md:flex-row md:items-center md:justify-between">
+        <div className="flex w-full flex-col gap-4 px-5 md:px-10 xl:px-16 2xl:px-24 py-8 text-sm text-muted md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-2">
             <Logo />
             <span>AgentMesh: your computer's internet, on your phone.</span>
@@ -267,7 +267,7 @@ function Logo() {
 function SiteHeader({ signedIn, onDemo }: { signedIn: boolean; onDemo: () => void }) {
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur">
-      <div className="mx-auto flex h-16 max-w-6xl items-center gap-4 px-4">
+      <div className="flex h-16 w-full items-center gap-4 px-5 md:px-10 xl:px-16 2xl:px-24">
         <Link to="/welcome" className="flex items-center gap-2 font-semibold">
           <Logo />
           AgentMesh
@@ -304,7 +304,7 @@ function SiteHeader({ signedIn, onDemo }: { signedIn: boolean; onDemo: () => voi
 
 function Section({ id, eyebrow, title, children }: { id: string; eyebrow: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} className="mx-auto max-w-6xl scroll-mt-20 px-4 py-14">
+    <section id={id} className="w-full scroll-mt-20 px-5 md:px-10 xl:px-16 2xl:px-24 py-14">
       <p className="text-sm font-semibold tracking-wide text-primary uppercase">{eyebrow}</p>
       <h2 className="mt-2 mb-8 text-3xl font-bold tracking-tight">{title}</h2>
       {children}
@@ -346,12 +346,12 @@ function Faq({ q, children }: { q: string; children: ReactNode }) {
 /** Mock phone + dashboard card for the hero. */
 function HeroCard() {
   return (
-    <div className="relative mx-auto w-full max-w-md pb-10">
+    <div className="relative mx-auto w-full max-w-md pb-10 md:mr-0">
       <div className="rounded-2xl border border-border bg-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <span className="text-sm font-semibold">Connect a phone</span>
           <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-            <span className="size-2 rounded-full bg-emerald-500" aria-hidden /> Office Mac mini · online
+            <span className="size-2 rounded-full bg-emerald-500" aria-hidden /> Home computer · online
           </span>
         </div>
         <div className="mt-5 flex items-center gap-5">
@@ -431,7 +431,7 @@ type Tab = 'mac' | 'docker' | 'android' | 'iphone';
 function InstallTabs() {
   const [tab, setTab] = useState<Tab>('mac');
   const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
-    { id: 'mac', label: 'Mac mini server', icon: Apple },
+    { id: 'mac', label: 'macOS server', icon: Apple },
     { id: 'docker', label: 'Windows / Linux server', icon: Monitor },
     { id: 'android', label: 'Android phone', icon: Smartphone },
     { id: 'iphone', label: 'iPhone', icon: Smartphone },
