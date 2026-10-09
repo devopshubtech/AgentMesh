@@ -2,7 +2,7 @@
 
 Use your computer's internet on your phone, from anywhere: a self-hosted exit node for Android (and iPhone) that works on mobile data and any Wi-Fi, with no router changes.
 
-**▶ [Product page](https://agentmesh-hub.vercel.app/welcome) · [Live demo, no login](https://agentmesh-hub.vercel.app/connect?demo=1)**
+**▶ [Product page](https://agentmeshvpn.vercel.app/welcome) · [Live demo, no login](https://agentmeshvpn.vercel.app/connect?demo=1)**
 
 > ## ⬇️ Direct downloads
 > | App | Direct link |
